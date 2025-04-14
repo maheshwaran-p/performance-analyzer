@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/certificate_provider.dart';
+import '../providers/user_provider.dart';
 import '../widgets/recommendation_card.dart';
 
 class ResultsScreen extends StatelessWidget {
@@ -27,6 +28,9 @@ class ResultsScreen extends StatelessWidget {
           final results = provider.results;
           final averageScore = provider.averageScore;
           
+          // Check if there are any valid certificates
+          final hasValidCertificates = results.any((result) => result['isOriginal'] == true);
+          
           return ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
@@ -48,8 +52,20 @@ class ResultsScreen extends StatelessWidget {
               ...results.asMap().entries.map((entry) {
                 final index = entry.key;
                 final result = entry.value;
+                
+                // If certificate type is unknown, ensure score is 0
+                if (result['certificateType'] == 'Unknown' || result['certificateType'] == 'Unidentified') {
+                  result['score'] = 0;
+                }
+                
                 return _buildResultCard(context, result, index);
               }).toList(),
+              
+              const SizedBox(height: 20),
+              
+              // Submit button only if there are valid certificates
+              if (hasValidCertificates)
+                _buildSubmitButton(context, provider),
               
               const SizedBox(height: 20),
               
@@ -130,117 +146,235 @@ class ResultsScreen extends StatelessWidget {
     );
   }
   
-  Widget _buildResultCard(BuildContext context, dynamic result, int index) {
-  return Card(
-    margin: const EdgeInsets.only(bottom: 10),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(10),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Center(
-                  child: Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade700,
+  Widget _buildSubmitButton(BuildContext context, CertificateProvider provider) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: ElevatedButton(
+          onPressed: () async {
+            // Show loading indicator
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => const Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+            
+            try {
+              // Get current user email
+              final userEmail = Provider.of<UserProvider>(context, listen: false).currentUser?.email;
+              
+              if (userEmail != null) {
+                // Only submit certificates that are valid
+                final validCertificates = provider.certificates.where((cert) => cert.isOriginal == true).toList();
+                
+                // Save the valid certificates
+                await provider.saveValidCertificates(userEmail);
+                
+                // Dismiss loading indicator
+                if (context.mounted) Navigator.pop(context);
+                
+                // Show success message
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Certificates successfully submitted!'),
+                      backgroundColor: Colors.green,
                     ),
+                  );
+                  
+                  // Navigate back to home screen
+                  Navigator.pop(context);
+                }
+              } else {
+                // Dismiss loading indicator
+                if (context.mounted) Navigator.pop(context);
+                
+                // Show error message if user not logged in
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please log in to submit certificates'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            } catch (e) {
+              // Dismiss loading indicator
+              if (context.mounted) Navigator.pop(context);
+              
+              // Show error message
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error submitting certificates: $e'),
+                    backgroundColor: Colors.red,
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  result['filename'] ?? 'Unknown Filename',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+                );
+              }
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
-          const Divider(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Certificate Type:',
-                    style: TextStyle(color: Colors.grey),
+          child: const Text(
+            'Submit Valid Certificates',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildResultCard(BuildContext context, dynamic result, int index) {
+    // Ensure score is 0 if certificate type is Unknown
+    final score = (result['certificateType'] == 'Unknown' || 
+                    result['certificateType'] == 'Unidentified') 
+                    ? 0 
+                    : result['score'];
+                    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(18),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    result['certificateType'] ?? 'Unknown',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              // Validation status
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: result['isOriginal'] 
-                    ? Colors.green.withOpacity(0.1) 
-                    : Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      result['isOriginal'] 
-                        ? Icons.check_circle 
-                        : Icons.cancel,
-                      color: result['isOriginal'] 
-                        ? Colors.green 
-                        : Colors.red,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      result['isOriginal'] ? 'Valid' : 'Invalid',
+                  child: Center(
+                    child: Text(
+                      '${index + 1}',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: result['isOriginal'] 
-                          ? Colors.green 
-                          : Colors.red,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    result['filename'] ?? 'Unknown Filename',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Certificate Type:',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      result['certificateType'] ?? 'Unknown',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                // Score display
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'Score:',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$score',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _getScoreColor(score),
+                        fontSize: 16,
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Authentication Reason
-          Text(
-            result['authenticationReason'] ?? 'No additional information',
-            style: TextStyle(
-              color: Colors.grey[700],
-              fontStyle: FontStyle.italic,
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            // Validation status
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: result['isOriginal'] 
+                  ? Colors.green.withOpacity(0.1) 
+                  : Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    result['isOriginal'] 
+                      ? Icons.check_circle 
+                      : Icons.cancel,
+                    color: result['isOriginal'] 
+                      ? Colors.green 
+                      : Colors.red,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    result['isOriginal'] ? 'Valid' : 'Invalid',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: result['isOriginal'] 
+                        ? Colors.green 
+                        : Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Authentication Reason
+            Text(
+              result['authenticationReason'] ?? 'No additional information',
+              style: TextStyle(
+                color: Colors.grey[700],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
   
   Color _getScoreColor(int score) {
     if (score >= 85) return Colors.green;

@@ -1,72 +1,95 @@
-// import 'dart:io';
-// import 'package:http/http.dart' as http;
-// import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:google_ml_kit/google_ml_kit.dart';
 
-// class CertificateAuthenticationService {
-//   final String openAiApiKey;
+class CertificateAuthenticationService {
+  Future<Map<String, dynamic>> authenticateCertificate(File file) async {
+    try {
+      // Perform text recognition
+      final inputImage = InputImage.fromFile(file);
+      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      
+      // Combine all recognized text
+      String extractedText = recognizedText.text.toLowerCase();
 
-//   CertificateAuthenticationService(this.openAiApiKey);
+      // Validation criteria
+      bool hasCertificateText = _checkCertificateText(extractedText);
+      bool hasStructuredLayout = _checkDocumentLayout(recognizedText);
+      bool hasOfficialElements = _checkOfficialElements(extractedText);
 
-//   Future<Map<String, dynamic>> authenticateCertificate(File file) async {
-//     try {
-//       // Convert file to base64
-//       final bytes = await file.readAsBytes();
-//       final base64Image = base64Encode(bytes);
+      // Cleanup
+      await textRecognizer.close();
 
-//       // Prepare API request
-//       final response = await http.post(
-//         Uri.parse('https://api.openai.com/v1/chat/completions'),
-//         headers: {
-//           'Content-Type': 'application/json',
-//           'Authorization': 'Bearer $openAiApiKey'
-//         },
-//         body: jsonEncode({
-//           'model': 'gpt-4-vision-preview',
-//           'messages': [
-//             {
-//               'role': 'user',
-//               'content': [
-//                 {
-//                   'type': 'text',
-//                   'text': 'Analyze this certificate. Is it an original, authentic document? '
-//                       'Look for signs of forgery, unusual formatting, or inconsistencies. '
-//                       'Provide a detailed assessment of its authenticity. '
-//                       'Your response should include a boolean "isOriginal" and a reason.'
-//                 },
-//                 {
-//                   'type': 'image_url',
-//                   'image_url': {
-//                     'url': 'data:image/jpeg;base64,$base64Image'
-//                   }
-//                 }
-//               ]
-//             }
-//           ],
-//           'max_tokens': 300
-//         }),
-//       );
+      // Create reasons and determine authenticity
+      List<String> reasons = [];
+      if (hasCertificateText) reasons.add('Contains certificate text');
+      if (hasStructuredLayout) reasons.add('Structured document layout');
+      if (hasOfficialElements) reasons.add('Official document indicators');
 
-//       // Parse response
-//       if (response.statusCode == 200) {
-//         final jsonResponse = jsonDecode(response.body);
-//         final content = jsonResponse['choices'][0]['message']['content'];
-        
-//         // Basic parsing of authentication result
-//         final isOriginal = content.toLowerCase().contains('authentic') || 
-//                           content.toLowerCase().contains('original');
-        
-//         return {
-//           'isOriginal': isOriginal,
-//           'reason': content
-//         };
-//       } else {
-//         throw Exception('Failed to authenticate certificate');
-//       }
-//     } catch (e) {
-//       return {
-//         'isOriginal': false,
-//         'reason': 'Authentication failed: ${e.toString()}'
-//       };
-//     }
-//   }
-// }
+      return {
+        'isOriginal': hasCertificateText && 
+                      hasStructuredLayout && 
+                      hasOfficialElements,
+        'reason': reasons.isNotEmpty 
+          ? reasons.join('. ') 
+          : 'Unable to validate certificate',
+        'certificateType': _identifyCertificateType(extractedText)
+      };
+    } catch (e) {
+      return {
+        'isOriginal': false,
+        'reason': 'Error processing document: ${e.toString()}',
+        'certificateType': 'Unknown'
+      };
+    }
+  }
+
+  bool _checkCertificateText(String text) {
+    final certificateKeywords = [
+      'certificate',
+      'certified',
+      'verification',
+      'diploma',
+      'degree',
+      'award',
+      'license'
+    ];
+    return certificateKeywords.any((keyword) => text.contains(keyword));
+  }
+
+  bool _checkDocumentLayout(RecognizedText recognizedText) {
+    // Check for multiple text blocks typical in certificates
+    return recognizedText.blocks.length >= 3;
+  }
+
+  bool _checkOfficialElements(String text) {
+    final officialIndicators = [
+      'issued by',
+      'authorized',
+      'official',
+      'validated',
+      'signature',
+      'seal',
+      'stamp'
+    ];
+    return officialIndicators.any((indicator) => text.contains(indicator));
+  }
+
+  String _identifyCertificateType(String text) {
+    final certificateTypes = {
+      'Academic': ['degree', 'diploma', 'graduation', 'university', 'college'],
+      'Professional': ['license', 'certification', 'qualification', 'professional'],
+      'Achievement': ['award', 'honor', 'recognition', 'achievement','completion']
+    };
+
+    for (var type in certificateTypes.entries) {
+      if (type.value.any((keyword) => text.contains(keyword))) {
+        return type.key;
+      }
+    }
+
+    return 'Unidentified';
+  }
+}

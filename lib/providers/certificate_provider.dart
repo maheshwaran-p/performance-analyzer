@@ -2,127 +2,62 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:performance_analzer2/providers/auth_service.dart';
+import 'package:performance_analzer2/service/api_service.dart';
 import 'dart:convert';
 import '../models/certificate.dart';
 
-import 'dart:io';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
-import 'dart:io';
-import 'package:flutter/foundation.dart';
-import 'package:google_ml_kit/google_ml_kit.dart';
-import 'package:image_picker/image_picker.dart';
-
-class CertificateAuthenticationService {
-  Future<Map<String, dynamic>> authenticateCertificate(File file) async {
-    try {
-      // Perform text recognition
-      final inputImage = InputImage.fromFile(file);
-      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-      
-      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-      
-      // Combine all recognized text
-      String extractedText = recognizedText.text.toLowerCase();
-
-      // Validation criteria
-      bool hasCertificateText = _checkCertificateText(extractedText);
-      bool hasStructuredLayout = _checkDocumentLayout(recognizedText);
-      bool hasOfficialElements = _checkOfficialElements(extractedText);
-
-      // Cleanup
-      await textRecognizer.close();
-
-      // Create reasons and determine authenticity
-      List<String> reasons = [];
-      if (hasCertificateText) reasons.add('Contains certificate text');
-      if (hasStructuredLayout) reasons.add('Structured document layout');
-      if (hasOfficialElements) reasons.add('Official document indicators');
-
-      return {
-        'isOriginal': hasCertificateText && 
-                      hasStructuredLayout && 
-                      hasOfficialElements,
-        'reason': reasons.isNotEmpty 
-          ? reasons.join('. ') 
-          : 'Unable to validate certificate',
-        'certificateType': _identifyCertificateType(extractedText)
-      };
-    } catch (e) {
-      return {
-        'isOriginal': false,
-        'reason': 'Error processing document: ${e.toString()}',
-        'certificateType': 'Unknown'
-      };
-    }
-  }
-
-  bool _checkCertificateText(String text) {
-    final certificateKeywords = [
-      'certificate',
-      'certified',
-      'verification',
-      'diploma',
-      'degree',
-      'award',
-      'license'
-    ];
-    return certificateKeywords.any((keyword) => text.contains(keyword));
-  }
-
-  bool _checkDocumentLayout(RecognizedText recognizedText) {
-    // Check for multiple text blocks typical in certificates
-    return recognizedText.blocks.length >= 3;
-  }
-
-  bool _checkOfficialElements(String text) {
-    final officialIndicators = [
-      'issued by',
-      'authorized',
-      'official',
-      'validated',
-      'signature',
-      'seal',
-      'stamp'
-    ];
-    return officialIndicators.any((indicator) => text.contains(indicator));
-  }
-
-  String _identifyCertificateType(String text) {
-    final certificateTypes = {
-      'Academic': ['degree', 'diploma', 'graduation', 'university', 'college'],
-      'Professional': ['license', 'certification', 'qualification', 'professional'],
-      'Achievement': ['award', 'honor', 'recognition', 'achievement','completion']
-    };
-
-    for (var type in certificateTypes.entries) {
-      if (type.value.any((keyword) => text.contains(keyword))) {
-        return type.key;
-      }
-    }
-
-    return 'Unidentified';
-  }
-}
-
 class CertificateProvider extends ChangeNotifier {
   final CertificateAuthenticationService authService;
+  final ApiService _apiService = ApiService();
 
   CertificateProvider(this.authService);
 
   List<Certificate> _certificates = [];
   List<dynamic> _results = [];
+  List<dynamic> _serverCertificates = []; // Certificates from the server
   Set<String> _allRecommendations = {};
   bool _isLoading = false;
   int _averageScore = 0;
+  String? _currentUserEmail;
 
   List<Certificate> get certificates => _certificates;
   List<dynamic> get results => _results;
+  List<dynamic> get serverCertificates => _serverCertificates;
   Set<String> get allRecommendations => _allRecommendations;
   bool get isLoading => _isLoading;
   int get averageScore => _averageScore;
+
+  // Set current user email from login
+  void setCurrentUser(String email) {
+    _currentUserEmail = email;
+  }
+
+  // Load server certificates
+  Future<void> loadServerCertificates() async {
+    if (_currentUserEmail == null) {
+      return;
+    }
+    
+    try {
+      _isLoading = true;
+      notifyListeners();
+      
+      _serverCertificates = await _apiService.getCertificates(_currentUserEmail!);
+      
+      // Calculate the average score based on server certificates
+      if (_serverCertificates.isNotEmpty) {
+        final scores = _serverCertificates.map((cert) => cert['Score'] as int? ?? 0);
+        _averageScore = (scores.reduce((a, b) => a + b) / _serverCertificates.length).round();
+      }
+      
+    } catch (e) {
+      print('Error loading server certificates: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> pickFiles() async {
     try {
@@ -161,6 +96,40 @@ class CertificateProvider extends ChangeNotifier {
     }
   }
 
+// Add this method to your CertificateProvider class
+
+Future<bool> saveValidCertificates(String email) async {
+  try {
+    _isLoading = true;
+    notifyListeners();
+    
+    // Filter only valid certificates
+    final validCertificates = _certificates.where((cert) => cert.isOriginal == true).toList();
+    
+    if (validCertificates.isEmpty) {
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+    
+    // Save certificates to the server
+    final success = await _apiService.saveCertificates(email, validCertificates);
+    
+    if (success) {
+      // Reload server certificates to update the list
+      await loadServerCertificates();
+    }
+    
+    _isLoading = false;
+    notifyListeners();
+    return success;
+  } catch (e) {
+    print('Error saving valid certificates: $e');
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+}
   void removeCertificate(int index) {
     if (index >= 0 && index < _certificates.length) {
       _certificates.removeAt(index);
@@ -176,68 +145,81 @@ class CertificateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-Future<void> analyzeCertificates() async {
-  try {
-    _isLoading = true;
-    _results.clear();
-    _allRecommendations.clear();
-    notifyListeners();
+  Future<void> analyzeCertificates() async {
+    try {
+      _isLoading = true;
+      _results.clear();
+      _allRecommendations.clear();
+      notifyListeners();
 
-    for (var certificate in _certificates) {
-      try {
-        final authResult = await authService.authenticateCertificate(certificate.file);
-        
-        // Determine if certificate is valid based on type
-        final certificateType = authResult['certificateType'] ?? 'Unknown';
-        final isValid = certificateType != 'Unidentified';
-        
-        // Calculate score based on validity
-        int score = 0; // Default score for invalid certificates
-        
-        // Only calculate score if the certificate is valid
-        if (isValid) {
-          score = 85;  // Base score for valid certificate types
+      for (var certificate in _certificates) {
+        try {
+          final authResult = await authService.authenticateCertificate(certificate.file);
           
-          // Add additional score points if it passes other validations 
-          if (authResult['isOriginal'] == true) {
-            score += 15;
+          // Determine if certificate is valid based on type
+          final certificateType = authResult['certificateType'] ?? 'Unknown';
+          final isValid = certificateType != 'Unidentified';
+          
+          // Calculate score based on validity
+          int score = 0; // Default score for invalid certificates
+          
+          // Only calculate score if the certificate is valid
+          if (isValid) {
+            score = 85;  // Base score for valid certificate types
+            
+            // Add additional score points if it passes other validations 
+            if (authResult['isOriginal'] == true) {
+              score += 15;
+            }
           }
-        }
-        
-        final result = {
-          'filename': certificate.filename,
-          'type': certificate.fileType,
-          'score': score,
-          'isOriginal': isValid, // Based on certificate type
-          'authenticationReason': isValid 
+          
+          final result = {
+            'filename': certificate.filename,
+            'type': certificate.fileType,
+            'score': score,
+            'isOriginal': isValid, // Based on certificate type
+            'authenticationReason': isValid 
+                ? 'Valid ${certificateType} certificate identified' 
+                : 'Certificate type could not be determined',
+            'certificateType': certificateType
+          };
+          
+          // Update the certificate object with validation results
+          certificate.isOriginal = isValid;
+          certificate.authenticationReason = isValid 
               ? 'Valid ${certificateType} certificate identified' 
-              : 'Certificate type could not be determined',
-          'certificateType': certificateType
-        };
-        
-        _results.add(result);
-      } catch (e) {
-        _results.add({
-          'filename': certificate.filename,
-          'type': certificate.fileType,
-          'score': 0,
-          'isOriginal': false,
-          'authenticationReason': 'Authentication failed: $e',
-          'certificateType': 'Unknown'
-        });
+              : 'Certificate type could not be determined';
+          
+          _results.add(result);
+        } catch (e) {
+          _results.add({
+            'filename': certificate.filename,
+            'type': certificate.fileType,
+            'score': 0,
+            'isOriginal': false,
+            'authenticationReason': 'Authentication failed: $e',
+            'certificateType': 'Unknown'
+          });
+        }
       }
+
+      _calculateAverageScore();
+      _generateRecommendations();
+      
+      // Save certificates to server if user is logged in
+      if (_currentUserEmail != null) {
+        await _apiService.saveCertificates(_currentUserEmail!, _certificates);
+        // Reload server certificates after saving
+        await loadServerCertificates();
+      }
+      
+    } catch (e) {
+      print('Error in analyzeCertificates: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-
-    _calculateAverageScore();
-    _generateRecommendations();
-  } catch (e) {
-    print('Error in analyzeCertificates: $e');
-  } finally {
-    _isLoading = false;
-    notifyListeners();
   }
-}
-
 
   void _calculateAverageScore() {
     if (_results.isEmpty) {
@@ -249,64 +231,12 @@ Future<void> analyzeCertificates() async {
     _averageScore = (scores.reduce((a, b) => a + b) / _results.length).round();
   }
 
-
-  int _calculateScore(bool isOriginal) {
-    return isOriginal ? 85 : 40;
-  }
-
-
-    void _generateRecommendations() {
+  void _generateRecommendations() {
     _allRecommendations.clear();
 
-    // if (_averageScore < 50) {
-      _allRecommendations.add('Carefully verify the authenticity of your certificates.');
-      _allRecommendations.add('Ensure certificates contain clear, official text and layout.');
-    // }
-
-    final invalidCount = _results.where((r) => !r['isOriginal']).length;
-    // if (invalidCount > 0) {
-      _allRecommendations.add('Some certificates failed validation. Consider getting official copies.');
-    // }
-
-    final certificateTypes = _results.map((r) => r['certificateType']).toSet();
-    // if (certificateTypes.length > 1) {
-      _allRecommendations.add('Certificates from different domains may require specialized verification.');
-    // }
+    _allRecommendations.add('Carefully verify the authenticity of your certificates.');
+    _allRecommendations.add('Ensure certificates contain clear, official text and layout.');
+    _allRecommendations.add('Some certificates failed validation. Consider getting official copies.');
+    _allRecommendations.add('Certificates from different domains may require specialized verification.');
   }
-
-
-  // void _calculateAverageScore() {
-  //   if (_results.isEmpty) {
-  //     _averageScore = 0;
-  //     return;
-  //   }
-
-  //   final scores = _results.map((r) => r['score'] as int);
-  //   _averageScore = (scores.reduce((a, b) => a + b) / _results.length).round();
-  // }
-
-  // void _generateRecommendations() {
-  //   _allRecommendations.clear();
-
-  //   if (_averageScore < 50) {
-  //     _allRecommendations.add('Carefully verify the authenticity of your certificates.');
-  //     _allRecommendations.add('Consider consulting official sources to confirm certificate validity.');
-  //   }
-
-  //   final pdfCount = _results.where((r) => r['type'] == 'pdf').length;
-  //   final imageCount = _results.where((r) => ['jpg', 'jpeg', 'png'].contains(r['type'])).length;
-    
-  //   if (pdfCount > 0 && imageCount == 0) {
-  //     _allRecommendations.add('Consider having image copies of your PDF certificates for additional verification.');
-  //   }
-
-  //   final forgedCount = _results.where((r) => r['isOriginal'] == false).length;
-  //   if (forgedCount > 0) {
-  //     _allRecommendations.add('Some certificates appear to have authenticity issues. Seek verification from issuing authorities.');
-  //   }
-
-  //   if (_averageScore < 70) {
-  //     _allRecommendations.add('Your certificates may need additional validation. Consult with professional verification services.');
-  //   }
-  // }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:performance_analzer2/providers/auth_service.dart';
+import 'package:performance_analzer2/screens/login.dart';
 import 'package:provider/provider.dart';
 import 'providers/certificate_provider.dart';
-import 'screens/main_screen.dart';
+import 'providers/user_provider.dart';
 
 void main() {
   final authService = CertificateAuthenticationService();
@@ -12,8 +14,11 @@ void main() {
         ChangeNotifierProvider(
           create: (_) => CertificateProvider(authService),
         ),
+        ChangeNotifierProvider(
+          create: (_) => UserProvider(),
+        ),
       ],
-      child: MyApp(),
+      child: const MyApp(),
     )
   );
 }
@@ -34,7 +39,7 @@ class MyApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      home: const MainScreen(),
+      home: const LoginScreen(),
     );
   }
 }
