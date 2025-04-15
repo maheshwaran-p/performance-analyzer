@@ -1,0 +1,861 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:performance_analzer2/service/api_service.dart';
+import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import '../providers/certificate_provider.dart';
+import '../providers/user_provider.dart';
+
+class AcademicActivitiesScreen extends StatefulWidget {
+  const AcademicActivitiesScreen({super.key});
+
+  @override
+  State<AcademicActivitiesScreen> createState() => _AcademicActivitiesScreenState();
+}
+
+class _AcademicActivitiesScreenState extends State<AcademicActivitiesScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final ApiService _apiService = ApiService();
+  bool _isLoading = false;
+  
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+  }
+  
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Academic Activities'),
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabs: const [
+            Tab(text: 'Research'),
+            Tab(text: 'Publications'),
+            Tab(text: 'Guest Lectures'),
+            Tab(text: 'Self Development'),
+          ],
+        ),
+      ),
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : TabBarView(
+            controller: _tabController,
+            children: [
+              ResearchTab(),
+              PublicationsTab(),
+              GuestLecturesTab(),
+              SelfDevelopmentTab(),
+            ],
+          ),
+    );
+  }
+}
+
+// Base class for activity tabs with common functionality
+abstract class ActivityTab extends StatefulWidget {
+  const ActivityTab({super.key});
+}
+
+abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
+  final _formKey = GlobalKey<FormState>();
+  final ApiService _apiService = ApiService();
+  bool _isLoading = false;
+  File? _selectedImage;
+  bool _isImageValid = false;
+  
+  // Abstract method to get fields specific to this activity type
+  List<Widget> buildActivitySpecificFields();
+  
+  // Abstract method to get the activity type name
+  String get activityTypeName;
+  
+  // Abstract method to save the activity
+  Future<bool> saveActivity(String email);
+  
+  Future<void> _pickImage() async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+      
+      final ImagePicker picker = ImagePicker();
+      final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+          _isImageValid = false; // Reset validation
+        });
+        
+        // Validate the image
+        await _validateImage();
+      }
+    } catch (e) {
+      print('Error picking image: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+  
+  Future<void> _validateImage() async {
+    if (_selectedImage == null) return;
+    
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      // Use your certificate authentication service to check if the image contains text
+      final CertificateProvider certificateProvider = Provider.of<CertificateProvider>(context, listen: false);
+      final authResult = await certificateProvider.authService.authenticateCertificate(_selectedImage!);
+      
+      // If the image contains any text (any blocks), consider it valid
+      setState(() {
+        _isImageValid = authResult['isOriginal'] == true || 
+                         (authResult['reason'] != null && authResult['reason'].toString().isNotEmpty);
+      });
+      
+      _showValidationResult();
+    } catch (e) {
+      print('Error validating image: $e');
+      setState(() {
+        _isImageValid = false;
+      });
+      _showValidationError(e.toString());
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+  
+  void _showValidationResult() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_isImageValid 
+          ? 'Image validated successfully!' 
+          : 'Invalid image - no content detected'),
+        backgroundColor: _isImageValid ? Colors.green : Colors.red,
+      ),
+    );
+  }
+  
+  void _showValidationError(String error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error validating image: $error'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+  
+  Future<void> _submitActivity() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    
+    if (_selectedImage == null || !_isImageValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please upload and validate a supporting document image'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      if (!userProvider.isLoggedIn) {
+        throw Exception('User not logged in');
+      }
+      
+      final email = userProvider.currentUser!.email;
+      final success = await saveActivity(email);
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$activityTypeName saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Reset form
+        _formKey.currentState!.reset();
+        setState(() {
+          _selectedImage = null;
+          _isImageValid = false;
+        });
+      } else {
+        throw Exception('Failed to save $activityTypeName');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return _isLoading 
+      ? const Center(child: CircularProgressIndicator())
+      : SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                Text(
+                  'Add New $activityTypeName',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 24),
+                
+                // Activity-specific fields
+                ...buildActivitySpecificFields(),
+                
+                const SizedBox(height: 24),
+                
+                // Image upload section
+                Text(
+                  'Supporting Document',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Upload an image of the document for verification',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                
+                // Image preview or upload button
+                if (_selectedImage != null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Stack(
+                        alignment: Alignment.topRight,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              _selectedImage!,
+                              width: double.infinity,
+                              height: 200,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          Container(
+                            margin: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.black.withOpacity(0.7),
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white),
+                              onPressed: () {
+                                setState(() {
+                                  _selectedImage = null;
+                                  _isImageValid = false;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(
+                            _isImageValid ? Icons.check_circle : Icons.error,
+                            color: _isImageValid ? Colors.green : Colors.red,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isImageValid 
+                              ? 'Document validated successfully' 
+                              : 'Document validation failed',
+                            style: TextStyle(
+                              color: _isImageValid ? Colors.green : Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
+                else
+                  InkWell(
+                    onTap: _pickImage,
+                    child: Container(
+                      width: double.infinity,
+                      height: 150,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.blue.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 48,
+                            color: Colors.blue,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'Tap to upload a document image',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Supported formats: JPG, JPEG, PNG',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                
+                const SizedBox(height: 24),
+                
+                // Submit button
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _submitActivity,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      'Submit $activityTypeName',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+  }
+}
+
+// Research Tab Implementation
+class ResearchTab extends ActivityTab {
+  const ResearchTab({super.key});
+  
+  @override
+  State<ResearchTab> createState() => _ResearchTabState();
+}
+
+class _ResearchTabState extends ActivityTabState<ResearchTab> {
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _yearController = TextEditingController();
+  
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _yearController.dispose();
+    super.dispose();
+  }
+  
+  @override
+  String get activityTypeName => 'Research Project';
+  
+  @override
+  List<Widget> buildActivitySpecificFields() {
+    return [
+      TextFormField(
+        controller: _titleController,
+        decoration: const InputDecoration(
+          labelText: 'Research Title',
+          border: OutlineInputBorder(),
+        ),
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter a research title';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _descriptionController,
+        decoration: const InputDecoration(
+          labelText: 'Research Description',
+          border: OutlineInputBorder(),
+          alignLabelWithHint: true,
+        ),
+        maxLines: 3,
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter a research description';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _yearController,
+        decoration: const InputDecoration(
+          labelText: 'Year',
+          border: OutlineInputBorder(),
+        ),
+        keyboardType: TextInputType.number,
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter a year';
+          }
+          if (int.tryParse(value) == null) {
+            return 'Please enter a valid year';
+          }
+          return null;
+        },
+      ),
+    ];
+  }
+  
+  @override
+  Future<bool> saveActivity(String email) async {
+    try {
+      final research = {
+        'Title': _titleController.text.trim(),
+        'Description': _descriptionController.text.trim(),
+        'Year': int.parse(_yearController.text.trim()),
+        'Score': 85, // Default score for valid research
+      };
+      
+      // Save the research to the server
+      return await _apiService.saveResearch(email, research);
+    } catch (e) {
+      print('Error saving research: $e');
+      return false;
+    }
+  }
+}
+
+// Publications Tab Implementation
+class PublicationsTab extends ActivityTab {
+  const PublicationsTab({super.key});
+  
+  @override
+  State<PublicationsTab> createState() => _PublicationsTabState();
+}
+
+class _PublicationsTabState extends ActivityTabState<PublicationsTab> {
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _journalController = TextEditingController();
+  final TextEditingController _yearController = TextEditingController();
+  final TextEditingController _citationController = TextEditingController();
+  
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _journalController.dispose();
+    _yearController.dispose();
+    _citationController.dispose();
+    super.dispose();
+  }
+  
+  @override
+  String get activityTypeName => 'Publication';
+  
+  @override
+  List<Widget> buildActivitySpecificFields() {
+    return [
+      TextFormField(
+        controller: _titleController,
+        decoration: const InputDecoration(
+          labelText: 'Publication Title',
+          border: OutlineInputBorder(),
+        ),
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter a publication title';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _journalController,
+        decoration: const InputDecoration(
+          labelText: 'Journal/Conference',
+          border: OutlineInputBorder(),
+        ),
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter journal or conference name';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 16),
+      Row(
+        children: [
+          Expanded(
+            child: TextFormField(
+              controller: _yearController,
+              decoration: const InputDecoration(
+                labelText: 'Year',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter a year';
+                }
+                if (int.tryParse(value) == null) {
+                  return 'Please enter a valid year';
+                }
+                return null;
+              },
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: TextFormField(
+              controller: _citationController,
+              decoration: const InputDecoration(
+                labelText: 'Citation Count',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter citation count';
+                }
+                if (int.tryParse(value) == null) {
+                  return 'Please enter a valid number';
+                }
+                return null;
+              },
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+  
+  @override
+  Future<bool> saveActivity(String email) async {
+    try {
+      final publication = {
+        'Title': _titleController.text.trim(),
+        'Journal': _journalController.text.trim(),
+        'Year': int.parse(_yearController.text.trim()),
+        'Citation': int.parse(_citationController.text.trim()),
+        'Score': 85, // Default score for valid publication
+      };
+      
+      // Save the publication to the server
+      return await _apiService.savePublication(email, publication);
+    } catch (e) {
+      print('Error saving publication: $e');
+      return false;
+    }
+  }
+}
+
+// Guest Lectures Tab Implementation
+class GuestLecturesTab extends ActivityTab {
+  const GuestLecturesTab({super.key});
+  
+  @override
+  State<GuestLecturesTab> createState() => _GuestLecturesTabState();
+}
+
+class _GuestLecturesTabState extends ActivityTabState<GuestLecturesTab> {
+  final TextEditingController _topicController = TextEditingController();
+  final TextEditingController _institutionController = TextEditingController();
+  DateTime _lectureDate = DateTime.now();
+  
+  @override
+  void dispose() {
+    _topicController.dispose();
+    _institutionController.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _lectureDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    
+    if (picked != null && picked != _lectureDate) {
+      setState(() {
+        _lectureDate = picked;
+      });
+    }
+  }
+  
+  @override
+  String get activityTypeName => 'Guest Lecture';
+  
+  @override
+  List<Widget> buildActivitySpecificFields() {
+    return [
+      TextFormField(
+        controller: _topicController,
+        decoration: const InputDecoration(
+          labelText: 'Lecture Topic',
+          border: OutlineInputBorder(),
+        ),
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter the lecture topic';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _institutionController,
+        decoration: const InputDecoration(
+          labelText: 'Institution/Organization',
+          border: OutlineInputBorder(),
+        ),
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter the institution name';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 16),
+      InkWell(
+        onTap: () => _selectDate(context),
+        child: InputDecorator(
+          decoration: const InputDecoration(
+            labelText: 'Date of Lecture',
+            border: OutlineInputBorder(),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${_lectureDate.day}/${_lectureDate.month}/${_lectureDate.year}',
+              ),
+              const Icon(Icons.calendar_today, size: 20),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+  
+  @override
+  Future<bool> saveActivity(String email) async {
+    try {
+      final guestLecture = {
+        'Topic': _topicController.text.trim(),
+        'Institution': _institutionController.text.trim(),
+        'Date': _lectureDate.toIso8601String(),
+        'Score': 85, // Default score for valid guest lecture
+      };
+      
+      // Save the guest lecture to the server
+      return await _apiService.saveGuestLecture(email, guestLecture);
+    } catch (e) {
+      print('Error saving guest lecture: $e');
+      return false;
+    }
+  }
+}
+
+// Self Development Tab Implementation
+class SelfDevelopmentTab extends ActivityTab {
+  const SelfDevelopmentTab({super.key});
+  
+  @override
+  State<SelfDevelopmentTab> createState() => _SelfDevelopmentTabState();
+}
+
+class _SelfDevelopmentTabState extends ActivityTabState<SelfDevelopmentTab> {
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _organizationController = TextEditingController();
+  DateTime _completionDate = DateTime.now();
+  String _activityType = 'Course';
+  
+  final List<String> _activityTypes = [
+    'Course',
+    'Workshop',
+    'Certification',
+    'Training',
+    'Conference',
+    'Seminar',
+  ];
+  
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _organizationController.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _completionDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    
+    if (picked != null && picked != _completionDate) {
+      setState(() {
+        _completionDate = picked;
+      });
+    }
+  }
+  
+  @override
+  String get activityTypeName => 'Self Development Activity';
+  
+  @override
+  List<Widget> buildActivitySpecificFields() {
+    return [
+      DropdownButtonFormField<String>(
+        decoration: const InputDecoration(
+          labelText: 'Activity Type',
+          border: OutlineInputBorder(),
+        ),
+        value: _activityType,
+        items: _activityTypes.map((String type) {
+          return DropdownMenuItem<String>(
+            value: type,
+            child: Text(type),
+          );
+        }).toList(),
+        onChanged: (String? newValue) {
+          if (newValue != null) {
+            setState(() {
+              _activityType = newValue;
+            });
+          }
+        },
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Please select an activity type';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _titleController,
+        decoration: const InputDecoration(
+          labelText: 'Activity Title',
+          border: OutlineInputBorder(),
+        ),
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter the activity title';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _organizationController,
+        decoration: const InputDecoration(
+          labelText: 'Organization/Provider',
+          border: OutlineInputBorder(),
+        ),
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter the organization or provider';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 16),
+      InkWell(
+        onTap: () => _selectDate(context),
+        child: InputDecorator(
+          decoration: const InputDecoration(
+            labelText: 'Completion Date',
+            border: OutlineInputBorder(),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${_completionDate.day}/${_completionDate.month}/${_completionDate.year}',
+              ),
+              const Icon(Icons.calendar_today, size: 20),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+  
+  @override
+  Future<bool> saveActivity(String email) async {
+    try {
+      final selfDevelopment = {
+        'ActivityType': _activityType,
+        'Title': _titleController.text.trim(),
+        'Organization': _organizationController.text.trim(),
+        'Date': _completionDate.toIso8601String(),
+        'Score': 85, // Default score for valid self development activity
+      };
+      
+      // Save the self development activity to the server
+      return await _apiService.saveSelfDevelopment(email, selfDevelopment);
+    } catch (e) {
+      print('Error saving self development activity: $e');
+      return false;
+    }
+  }
+}

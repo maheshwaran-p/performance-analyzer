@@ -122,103 +122,184 @@ class ApiService {
     // In a real app, you would upload to Google Drive or other storage
     return 'https://storage.example.com/certificates/$filename';
   }
-  
-  // Save research data
   Future<bool> saveResearch(String email, Map<String, dynamic> research) async {
-    try {
-      final response = await http.post(
-        Uri.parse(baseUrl),
-        body: jsonEncode({
-          'action': 'saveResearch',
-          'email': email,
-          'research': research,
-        }),
-        headers: {'Content-Type': 'application/json'},
-      );
-      
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        return result['success'] == true;
-      } else {
-        throw Exception('Failed to save research: ${response.statusCode}');
+  try {
+    final client = http.Client();
+    
+    // Initial POST request
+    final initialResponse = await client.post(
+      Uri.parse(baseUrl),
+      body: jsonEncode({
+        'action': 'saveResearch',
+        'email': email,
+        'research': research,
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    );
+
+    // Check status code and handle redirect
+    if (initialResponse.statusCode == 302) {
+      final redirectUrl = initialResponse.headers['location'];
+      if (redirectUrl != null) {
+        // Follow the redirect
+        final redirectResponse = await client.get(
+          Uri.parse(redirectUrl)
+        );
+
+        // Process the redirected response
+        if (redirectResponse.statusCode == 200) {
+          final result = jsonDecode(redirectResponse.body);
+          return result?['success'] ?? false;
+        }
       }
-    } catch (e) {
-      print('Error saving research: $e');
-      return false;
+    } else if (initialResponse.statusCode == 200) {
+      final result = jsonDecode(initialResponse.body);
+      return result?['success'] ?? false;
     }
+
+    throw Exception('Failed to save research');
+  } catch (e) {
+    print('Error saving research: $e');
+    return false;
   }
+}
+
+Future<bool> savePublication(String email, Map<String, dynamic> publication) async {
+  try {
+    final client = http.Client();
+    
+    // Initial POST request
+    final initialResponse = await client.post(
+      Uri.parse(baseUrl),
+      body: jsonEncode({
+        'action': 'savePublication',
+        'email': email,
+        'publication': publication,
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    );
+
+    // Check status code and handle redirect
+    if (initialResponse.statusCode == 302) {
+      final redirectUrl = initialResponse.headers['location'];
+      if (redirectUrl != null) {
+        // Follow the redirect
+        final redirectResponse = await client.get(
+          Uri.parse(redirectUrl)
+        );
+
+        // Process the redirected response
+        if (redirectResponse.statusCode == 200) {
+          final result = jsonDecode(redirectResponse.body);
+          return result?['success'] ?? false;
+        }
+      }
+    } else if (initialResponse.statusCode == 200) {
+      final result = jsonDecode(initialResponse.body);
+      return result?['success'] ?? false;
+    }
+
+    throw Exception('Failed to save publication');
+  } catch (e) {
+    print('Error saving publication: $e');
+    return false;
+  }
+}
+
+Future<bool> saveSelfDevelopment(String email, Map<String, dynamic> selfDevelopment) async {
+  try {
+    final client = http.Client();
+    
+    // Initial POST request
+    final initialResponse = await client.post(
+      Uri.parse(baseUrl),
+      body: jsonEncode({
+        'action': 'saveSelfDevelopment',
+        'email': email,
+        'selfDevelopment': selfDevelopment,
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    );
+
+    // Check status code and handle redirect
+    if (initialResponse.statusCode == 302) {
+      final redirectUrl = initialResponse.headers['location'];
+      if (redirectUrl != null) {
+        // Follow the redirect
+        final redirectResponse = await client.get(
+          Uri.parse(redirectUrl)
+        );
+
+        // Process the redirected response
+        if (redirectResponse.statusCode == 200) {
+          final result = jsonDecode(redirectResponse.body);
+          return result?['success'] ?? false;
+        }
+      }
+    } else if (initialResponse.statusCode == 200) {
+      final result = jsonDecode(initialResponse.body);
+      return result?['success'] ?? false;
+    }
+
+    throw Exception('Failed to save self development');
+  } catch (e) {
+    print('Error saving self development: $e');
+    return false;
+  }
+}
   
-  // Save publication data
-  Future<bool> savePublication(String email, Map<String, dynamic> publication) async {
-    try {
-      final response = await http.post(
-        Uri.parse(baseUrl),
-        body: jsonEncode({
-          'action': 'savePublication',
-          'email': email,
-          'publication': publication,
-        }),
-        headers: {'Content-Type': 'application/json'},
-      );
-      
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        return result['success'] == true;
-      } else {
-        throw Exception('Failed to save publication: ${response.statusCode}');
+Future<bool> saveGuestLecture(String email, Map<String, dynamic> guestLecture) async {
+  try {
+    final client = http.Client();
+    
+    // Initial POST request
+    final initialResponse = await client.post(
+      Uri.parse(baseUrl),
+      body: jsonEncode({
+        'action': 'saveGuestLecture',
+        'email': email,
+        'guestLecture': guestLecture,
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_JWT_TOKEN'
+      },
+    );
+
+    // Check status code and handle redirect
+    if (initialResponse.statusCode == 302) {
+      final redirectUrl = initialResponse.headers['location'];
+      if (redirectUrl != null) {
+        // Follow the redirect
+        final redirectResponse = await client.get(
+          Uri.parse(redirectUrl),
+          headers: {
+            // 'Authorization': 'Bearer YOUR_JWT_TOKEN'
+          }
+        );
+
+        // Process the redirected response
+        if (redirectResponse.statusCode == 200) {
+          final result = jsonDecode(redirectResponse.body);
+          return result['success'] == true;
+        }
       }
-    } catch (e) {
-      print('Error saving publication: $e');
-      return false;
+    } else if (initialResponse.statusCode == 200) {
+      final result = jsonDecode(initialResponse.body);
+      return result['success'] == true;
     }
+
+    throw Exception('Failed to save guest lecture');
+  } catch (e) {
+    print('Error saving guest lecture: $e');
+    return false;
   }
+}
   
-  // Similarly, implement methods for other data types as needed
-  Future<bool> saveGuestLecture(String email, Map<String, dynamic> guestLecture) async {
-    try {
-      final response = await http.post(
-        Uri.parse(baseUrl),
-        body: jsonEncode({
-          'action': 'saveGuestLecture',
-          'email': email,
-          'guestLecture': guestLecture,
-        }),
-        headers: {'Content-Type': 'application/json'},
-      );
-      
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        return result['success'] == true;
-      } else {
-        throw Exception('Failed to save guest lecture: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Error saving guest lecture: $e');
-      return false;
-    }
-  }
-  
-  Future<bool> saveSelfDevelopment(String email, Map<String, dynamic> selfDevelopment) async {
-    try {
-      final response = await http.post(
-        Uri.parse(baseUrl),
-        body: jsonEncode({
-          'action': 'saveSelfDevelopment',
-          'email': email,
-          'selfDevelopment': selfDevelopment,
-        }),
-        headers: {'Content-Type': 'application/json'},
-      );
-      
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        return result['success'] == true;
-      } else {
-        throw Exception('Failed to save self development: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Error saving self development: $e');
-      return false;
-    }
-  }
 }

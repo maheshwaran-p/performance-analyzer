@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:performance_analzer2/screens/login.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../providers/certificate_provider.dart';
@@ -515,32 +516,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
   
   void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Logout'),
-          content: const Text('Are you sure you want to logout?'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                final userProvider = Provider.of<UserProvider>(context, listen: false);
-                userProvider.logout();
-                Navigator.of(context).pop();
-                // Navigate back to login screen
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-              child: const Text('Logout', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final userProvider = Provider.of<UserProvider>(context, listen: false);
+              await userProvider.logout();
+              
+              // Clear navigation stack and go to login
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()), 
+                (route) => false
+              );
+            },
+            child: const Text('Logout', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      );
+    },
+  );
+}
 }

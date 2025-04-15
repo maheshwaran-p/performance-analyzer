@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/user_provider.dart';
 import '../providers/certificate_provider.dart';
 import 'main_screen.dart';
@@ -16,6 +17,26 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSavedCredentials();
+  }
+
+  // Check if credentials are saved in SharedPreferences
+  Future<void> _checkSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedEmail = prefs.getString('user_email');
+    final savedPassword = prefs.getString('user_password');
+
+    if (savedEmail != null && savedPassword != null) {
+      setState(() {
+        _emailController.text = savedEmail;
+        _passwordController.text = savedPassword;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -41,6 +62,12 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       
       if (success && context.mounted) {
+        // Save credentials to SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_email', _emailController.text.trim());
+        await prefs.setString('user_password', _passwordController.text);
+        await prefs.setBool('is_logged_in', true);
+
         // Set the current user email in the certificate provider
         certificateProvider.setCurrentUser(_emailController.text.trim());
         
@@ -76,19 +103,12 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // App logo
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.verified_user,
-                  size: 60,
-                  color: Theme.of(context).primaryColor,
-                ),
+              // College logo
+              Image.asset(
+                'assets/agni1.jpeg', // Make sure this path is in your pubspec.yaml
+                width: 250,
+                height: 150,
+                fit: BoxFit.contain,
               ),
               const SizedBox(height: 40),
               
@@ -109,6 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               
               const SizedBox(height: 30),
+
               
               // Login form
               Form(
