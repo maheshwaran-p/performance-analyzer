@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:performance_analzer2/screens/login.dart';
+import 'package:performance_analzer2/screens/auth/login.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../providers/certificate_provider.dart';

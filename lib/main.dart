@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:performance_analzer2/providers/auth_service.dart';
-import 'package:performance_analzer2/screens/login.dart';
+import 'package:performance_analzer2/screens/auth/login.dart';
 import 'package:performance_analzer2/screens/onboarding.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:performance_analzer2/screens/auth/sign_up.dart';
+import 'package:performance_analzer2/screens/auth/verify_email.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../providers/user_provider.dart';
-import '../providers/certificate_provider.dart';
-import 'main_screen.dart';
+import '../../providers/user_provider.dart';
+import '../../providers/certificate_provider.dart';
+import '../main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -85,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // For quick testing of the app, populate staff login details
-  void _prefillLoginForm(String email, String password) {
+  void _prefillLoginScreen(String email, String password) {
     setState(() {
       _emailController.text = email;
       _passwordController.text = password;
@@ -232,6 +234,28 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               
               const SizedBox(height: 30),
+
+                            Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text("Don't have an account? "),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const EmailVerificationScreen()),
+                      );
+                    },
+                    child: Text(
+                      'Sign Up',
+                      style: TextStyle(
+                        color: Theme.of(context).primaryColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
               
               // Quick login buttons for testing
               const Text('Quick Login for Testing:'),
@@ -241,19 +265,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 runSpacing: 10,
                 children: [
                   ElevatedButton(
-                    onPressed: () => _prefillLoginForm('keerthinithya2003@gmail.com', '123456'),
+                    onPressed: () => _prefillLoginScreen('keerthinithya2003@gmail.com', '123456'),
                     child: const Text('HOD Login'),
                   ),
                   ElevatedButton(
-                    onPressed: () => _prefillLoginForm('asmick76@gmail.com', '123456'),
+                    onPressed: () => _prefillLoginScreen('asmick76@gmail.com', '123456'),
                     child: const Text('Staff 1'),
                   ),
                   ElevatedButton(
-                    onPressed: () => _prefillLoginForm('kk9861769@gmail.com', '123456'),
+                    onPressed: () => _prefillLoginScreen('kk9861769@gmail.com', '123456'),
                     child: const Text('Staff 2'),
                   ),
                   ElevatedButton(
-                    onPressed: () => _prefillLoginForm('kavipriyamalathi18@gmail.com', '123456'),
+                    onPressed: () => _prefillLoginScreen('kavipriyamalathi18@gmail.com', '123456'),
                     child: const Text('Staff 3'),
                   ),
                 ],
