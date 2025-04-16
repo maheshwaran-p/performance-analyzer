@@ -62,6 +62,7 @@ class ApiService {
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
         if (result['success'] == true) {
+          print('profile data -- ${result['profile']}');
           return result['profile'];
         } else {
           throw Exception(result['error'] ?? 'Failed to get profile');
