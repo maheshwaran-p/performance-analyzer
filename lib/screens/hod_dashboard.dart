@@ -203,76 +203,76 @@ class _HodDashboardScreenState extends State<HodDashboardScreen> {
           const SizedBox(height: 24),
           
           // Quick actions
-          const Text(
-            'Quick Actions',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
+          // const Text(
+          //   'Quick Actions',
+          //   style: TextStyle(
+          //     fontSize: 20,
+          //     fontWeight: FontWeight.bold,
+          //   ),
+          // ),
+          // const SizedBox(height: 16),
           
-          Row(
-            children: [
-              Expanded(
-                child: _buildActionButton(
-                  'Review Certificates',
-                  Icons.fact_check,
-                  Colors.blue,
-                  () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Certificate review coming soon')),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildActionButton(
-                  'Generate Report',
-                  Icons.assessment,
-                  Colors.green,
-                  () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Report generation coming soon')),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+          // Row(
+          //   children: [
+          //     Expanded(
+          //       child: _buildActionButton(
+          //         'Review Certificates',
+          //         Icons.fact_check,
+          //         Colors.blue,
+          //         () {
+          //           ScaffoldMessenger.of(context).showSnackBar(
+          //             const SnackBar(content: Text('Certificate review coming soon')),
+          //           );
+          //         },
+          //       ),
+          //     ),
+          //     const SizedBox(width: 16),
+          //     Expanded(
+          //       child: _buildActionButton(
+          //         'Generate Report',
+          //         Icons.assessment,
+          //         Colors.green,
+          //         () {
+          //           ScaffoldMessenger.of(context).showSnackBar(
+          //             const SnackBar(content: Text('Report generation coming soon')),
+          //           );
+          //         },
+          //       ),
+          //     ),
+          //   ],
+          // ),
           
-          const SizedBox(height: 16),
+          // const SizedBox(height: 16),
           
-          Row(
-            children: [
-              Expanded(
-                child: _buildActionButton(
-                  'Manage Categories',
-                  Icons.category,
-                  Colors.purple,
-                  () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Category management coming soon')),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildActionButton(
-                  'Department Settings',
-                  Icons.settings,
-                  Colors.orange,
-                  () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Department settings coming soon')),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+          // Row(
+          //   children: [
+          //     Expanded(
+          //       child: _buildActionButton(
+          //         'Manage Categories',
+          //         Icons.category,
+          //         Colors.purple,
+          //         () {
+          //           ScaffoldMessenger.of(context).showSnackBar(
+          //             const SnackBar(content: Text('Category management coming soon')),
+          //           );
+          //         },
+          //       ),
+          //     ),
+          //     const SizedBox(width: 16),
+          //     Expanded(
+          //       child: _buildActionButton(
+          //         'Department Settings',
+          //         Icons.settings,
+          //         Colors.orange,
+          //         () {
+          //           ScaffoldMessenger.of(context).showSnackBar(
+          //             const SnackBar(content: Text('Department settings coming soon')),
+          //           );
+          //         },
+          //       ),
+          //     ),
+          //   ],
+          // ),
         ],
       ),
     );

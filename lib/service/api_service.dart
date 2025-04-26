@@ -99,7 +99,41 @@ class ApiService {
   // Default category if no specific mapping is found
   return 'Normal certification';
 }
+// Add this method to your existing ApiService class
 
+
+  Future<Map<String, dynamic>> getPerformance(String email) async {
+    try {
+      // Add logging to debug the request
+      print('Making API request for email: $email');
+      
+      final response = await http.get(
+        Uri.parse('$baseUrl?action=getPerformance&email=$email'),
+      );
+      
+      
+      // Log response status and first part of the body for debugging
+      print('Response status: ${response.statusCode}');
+      print('Response body preview: ${response.body.substring(0, min(100, response.body.length))}...');
+      
+      if (response.statusCode == 200) {
+        // Try to parse the response with error handling
+        try {
+          final decodedResponse = jsonDecode(response.body) as Map<String, dynamic>;
+          return decodedResponse;
+        } catch (e) {
+          print('JSON decode error: $e');
+          print('Raw response body: ${response.body}');
+          return {'success': false, 'error': 'Failed to parse response: $e'};
+        }
+      } else {
+        return {'success': false, 'error': 'Failed to get performance data: ${response.statusCode}'};
+      }
+    } catch (e) {
+      print('Error getting performance data: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
   Future<bool> saveCertificates(String email, List<Certificate> certificates) async {
   try {
     print('saving cert');

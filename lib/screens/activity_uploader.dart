@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:performance_analzer2/screens/activity_sub.dart';
 import 'package:performance_analzer2/service/api_service.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -71,8 +72,10 @@ abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
   final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
-  File? _selectedImage;
-  bool _isImageValid = false;
+  List<File> _selectedImages = []; // Changed to list of files
+  Map<File, bool> _imageValidationStatus = {}; // Track validation status for each image
+  Map<File, String> _imageValidationMessages = {}; // Track validation messages for each image
+  Map<File, String> _imageDocumentTypes = {}; // Track document types for each image
   
   // Abstract method to get fields specific to this activity type
   List<Widget> buildActivitySpecificFields();
@@ -90,19 +93,36 @@ abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
       });
       
       final ImagePicker picker = ImagePicker();
-      final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      final List<XFile>? pickedFiles = await picker.pickMultiImage();
       
-      if (pickedFile != null) {
+      if (pickedFiles != null && pickedFiles.isNotEmpty) {
+        // Convert XFiles to Files and add to our list
+        List<File> newFiles = pickedFiles.map((xFile) => File(xFile.path)).toList();
+        
         setState(() {
-          _selectedImage = File(pickedFile.path);
-          _isImageValid = false; // Reset validation
+          _selectedImages.addAll(newFiles);
+          
+          // Initialize validation status for new files
+          for (var file in newFiles) {
+            _imageValidationStatus[file] = false;
+            _imageValidationMessages[file] = '';
+            _imageDocumentTypes[file] = 'Unknown';
+          }
         });
         
-        // Validate the image
-        await _validateImage();
+        // Validate all new images
+        for (var file in newFiles) {
+          await _validateSingleImage(file);
+        }
       }
     } catch (e) {
-      print('Error picking image: $e');
+      print('Error picking images: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error selecting images: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       setState(() {
         _isLoading = false;
@@ -110,56 +130,119 @@ abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
     }
   }
   
-  Future<void> _validateImage() async {
-    if (_selectedImage == null) return;
+  Future<void> _validateSingleImage(File file) async {
+  setState(() {
+    _imageValidationMessages[file] = 'Validating document...';
+  });
+  
+  try {
+    // Use the certificate authentication service to validate the document
+    final CertificateProvider certificateProvider = Provider.of<CertificateProvider>(context, listen: false);
+    final authResult = await certificateProvider.authService.authenticateCertificate(file);
     
+    final String fileName = file.path.split('/').last;
+    print('Document validation result for $fileName: $authResult');
+    
+    // Get values from auth result
+    bool isOriginal = authResult['isOriginal'] == true;
+    final String certificateType = authResult['certificateType'] ?? 'Unknown';
+    final String reason = authResult['reason'] ?? 'No validation reason provided';
+    
+    // Improved validation logic:
+    // Consider document valid if:
+    // 1. It's marked as original by the service OR
+    // 2. It has a recognized certificate type (not Unknown/Unidentified) OR
+    // 3. The reason contains "certificate text" and "document layout"
+    if (!isOriginal) {
+      if (certificateType != 'Unknown' && certificateType != 'Unidentified') {
+        // Override since we have a valid certificate type
+        isOriginal = true;
+      } else if (reason.contains("certificate text") && reason.contains("document layout")) {
+        // Override since the reason suggests it's valid
+        isOriginal = true;
+      }
+    }
+    
+    setState(() {
+      _imageValidationStatus[file] = isOriginal;
+      _imageDocumentTypes[file] = certificateType;
+      
+      // Create appropriate validation message
+      if (isOriginal) {
+        if (certificateType != 'Unknown' && certificateType != 'Unidentified') {
+          _imageValidationMessages[file] = 'Valid $certificateType document detected. $reason';
+        } else {
+          _imageValidationMessages[file] = 'Valid document detected. $reason';
+        }
+      } else {
+        _imageValidationMessages[file] = 'Invalid document. $reason';
+      }
+    });
+    
+    // Show validation result if this is the only document
+    if (_selectedImages.length == 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_imageValidationStatus[file] == true
+            ? 'Document validated successfully!' 
+            : 'Document validation failed'),
+          backgroundColor: _imageValidationStatus[file] == true ? Colors.green : Colors.red,
+        ),
+      );
+    }
+    
+  } catch (e) {
+    print('Error validating image: $e');
+    setState(() {
+      _imageValidationStatus[file] = false;
+      _imageValidationMessages[file] = 'Error validating document: ${e.toString()}';
+      _imageDocumentTypes[file] = 'Unknown';
+    });
+  }
+}
+  
+  void _removeImage(File file) {
+    setState(() {
+      _selectedImages.remove(file);
+      _imageValidationStatus.remove(file);
+      _imageValidationMessages.remove(file);
+      _imageDocumentTypes.remove(file);
+    });
+  }
+  
+  Future<void> _validateAllImages() async {
     setState(() {
       _isLoading = true;
     });
     
     try {
-      // Use your certificate authentication service to check if the image contains text
-      final CertificateProvider certificateProvider = Provider.of<CertificateProvider>(context, listen: false);
-      final authResult = await certificateProvider.authService.authenticateCertificate(_selectedImage!);
+      for (var file in _selectedImages) {
+        await _validateSingleImage(file);
+      }
       
-      // If the image contains any text (any blocks), consider it valid
-      setState(() {
-        _isImageValid = authResult['isOriginal'] == true || 
-                         (authResult['reason'] != null && authResult['reason'].toString().isNotEmpty);
-      });
+      // Show overall validation result
+      final allValid = _selectedImages.every((file) => _imageValidationStatus[file] == true);
       
-      _showValidationResult();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(allValid 
+            ? 'All documents validated successfully!' 
+            : 'Some documents failed validation.'),
+          backgroundColor: allValid ? Colors.green : Colors.orange,
+        ),
+      );
     } catch (e) {
-      print('Error validating image: $e');
-      setState(() {
-        _isImageValid = false;
-      });
-      _showValidationError(e.toString());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error validating documents: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       setState(() {
         _isLoading = false;
       });
     }
-  }
-  
-  void _showValidationResult() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_isImageValid 
-          ? 'Image validated successfully!' 
-          : 'Invalid image - no content detected'),
-        backgroundColor: _isImageValid ? Colors.green : Colors.red,
-      ),
-    );
-  }
-  
-  void _showValidationError(String error) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Error validating image: $error'),
-        backgroundColor: Colors.red,
-      ),
-    );
   }
   
   Future<void> _submitActivity() async {
@@ -167,14 +250,41 @@ abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
       return;
     }
     
-    if (_selectedImage == null || !_isImageValid) {
+    if (_selectedImages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please upload and validate a supporting document image'),
+          content: Text('Please upload at least one supporting document'),
           backgroundColor: Colors.red,
         ),
       );
       return;
+    }
+    
+    // Check if any documents are invalid
+    final hasInvalidDocuments = _selectedImages.any((file) => _imageValidationStatus[file] != true);
+    
+    if (hasInvalidDocuments) {
+      // Show confirmation dialog for invalid documents
+      bool proceed = await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Invalid Documents'),
+          content: const Text('Some of the uploaded documents did not pass validation. Do you still want to proceed?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Proceed Anyway'),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+            ),
+          ],
+        ),
+      ) ?? false;
+      
+      if (!proceed) return;
     }
     
     setState(() {
@@ -201,8 +311,10 @@ abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
         // Reset form
         _formKey.currentState!.reset();
         setState(() {
-          _selectedImage = null;
-          _isImageValid = false;
+          _selectedImages.clear();
+          _imageValidationStatus.clear();
+          _imageValidationMessages.clear();
+          _imageDocumentTypes.clear();
         });
       } else {
         throw Exception('Failed to save $activityTypeName');
@@ -221,10 +333,170 @@ abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
     }
   }
   
+  // Build document preview for each uploaded image
+  Widget _buildDocumentPreviewItem(File file) {
+    final isValid = _imageValidationStatus[file] ?? false;
+    final validationMessage = _imageValidationMessages[file] ?? '';
+    final documentType = _imageDocumentTypes[file] ?? 'Unknown';
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isValid ? Colors.green : Colors.red,
+          width: 1,
+        ),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Stack(
+            alignment: Alignment.topRight,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(11),
+                ),
+                child: Image.file(
+                  file,
+                  width: double.infinity,
+                  height: 150,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Validate button
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.blue.withOpacity(0.7),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.refresh, color: Colors.white, size: 20),
+                        onPressed: () => _validateSingleImage(file),
+                        tooltip: 'Validate Again',
+                        iconSize: 20,
+                        padding: const EdgeInsets.all(8),
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Remove button
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withOpacity(0.7),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                        onPressed: () => _removeImage(file),
+                        tooltip: 'Remove Document',
+                        iconSize: 20,
+                        padding: const EdgeInsets.all(8),
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isValid ? Icons.check_circle : Icons.error,
+                      color: isValid ? Colors.green : Colors.red,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isValid ? 'Document Valid' : 'Document Invalid',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isValid ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (documentType != 'Unknown' && documentType != 'Unidentified')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.description,
+                          color: Colors.blue,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          documentType,
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (validationMessage.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      validationMessage,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
   @override
   Widget build(BuildContext context) {
     return _isLoading 
-      ? const Center(child: CircularProgressIndicator())
+      ? Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                'Processing documents...',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        )
       : SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: Form(
@@ -244,115 +516,90 @@ abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
                 
                 const SizedBox(height: 24),
                 
-                // Image upload section
-                Text(
-                  'Supporting Document',
-                  style: Theme.of(context).textTheme.titleMedium,
+                // Document upload section
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Supporting Documents',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (_selectedImages.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: _validateAllImages,
+                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                        label: const Text('Validate All'),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          minimumSize: Size.zero,
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Upload an image of the document for verification',
+                  'Upload images of supporting documents for verification',
                   style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
                 
-                // Image preview or upload button
-                if (_selectedImage != null)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Stack(
-                        alignment: Alignment.topRight,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.file(
-                              _selectedImage!,
-                              width: double.infinity,
-                              height: 200,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          Container(
-                            margin: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.black.withOpacity(0.7),
-                            ),
-                            child: IconButton(
-                              icon: const Icon(Icons.close, color: Colors.white),
-                              onPressed: () {
-                                setState(() {
-                                  _selectedImage = null;
-                                  _isImageValid = false;
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Icon(
-                            _isImageValid ? Icons.check_circle : Icons.error,
-                            color: _isImageValid ? Colors.green : Colors.red,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _isImageValid 
-                              ? 'Document validated successfully' 
-                              : 'Document validation failed',
-                            style: TextStyle(
-                              color: _isImageValid ? Colors.green : Colors.red,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  )
-                else
-                  InkWell(
-                    onTap: _pickImage,
-                    child: Container(
-                      width: double.infinity,
-                      height: 150,
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.blue.withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(
-                            Icons.cloud_upload_outlined,
-                            size: 48,
-                            color: Colors.blue,
-                          ),
-                          SizedBox(height: 12),
-                          Text(
-                            'Tap to upload a document image',
-                            style: TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Supported formats: JPG, JPEG, PNG',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
+                // Document preview list
+                if (_selectedImages.isNotEmpty)
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _selectedImages.length,
+                    itemBuilder: (context, index) {
+                      return _buildDocumentPreviewItem(_selectedImages[index]);
+                    },
+                  ),
+                
+                // Add document button
+                InkWell(
+                  onTap: _pickImage,
+                  child: Container(
+                    width: double.infinity,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.blue.withOpacity(0.3),
+                        width: 1,
                       ),
                     ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _selectedImages.isEmpty 
+                              ? Icons.cloud_upload_outlined 
+                              : Icons.add_photo_alternate_outlined,
+                          size: _selectedImages.isEmpty ? 40 : 32,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _selectedImages.isEmpty
+                              ? 'Tap to upload documents'
+                              : 'Add more documents',
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Supported formats: JPG, JPEG, PNG',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ),
                 
                 const SizedBox(height: 24),
                 
@@ -363,14 +610,22 @@ abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
                   child: ElevatedButton(
                     onPressed: _submitActivity,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).primaryColor,
+                      backgroundColor: _selectedImages.isNotEmpty
+                          ? (_selectedImages.every((file) => _imageValidationStatus[file] == true)
+                              ? Theme.of(context).primaryColor
+                              : Colors.orange)
+                          : Colors.grey.shade400,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                     child: Text(
-                      'Submit $activityTypeName',
+                      _selectedImages.isEmpty
+                          ? 'Submit $activityTypeName (No Documents)'
+                          : (_selectedImages.every((file) => _imageValidationStatus[file] == true)
+                              ? 'Submit $activityTypeName'
+                              : 'Submit $activityTypeName (Some Invalid)'),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -382,480 +637,5 @@ abstract class ActivityTabState<T extends ActivityTab> extends State<T> {
             ),
           ),
         );
-  }
-}
-
-// Research Tab Implementation
-class ResearchTab extends ActivityTab {
-  const ResearchTab({super.key});
-  
-  @override
-  State<ResearchTab> createState() => _ResearchTabState();
-}
-
-class _ResearchTabState extends ActivityTabState<ResearchTab> {
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _yearController = TextEditingController();
-  
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descriptionController.dispose();
-    _yearController.dispose();
-    super.dispose();
-  }
-  
-  @override
-  String get activityTypeName => 'Research Project';
-  
-  @override
-  List<Widget> buildActivitySpecificFields() {
-    return [
-      TextFormField(
-        controller: _titleController,
-        decoration: const InputDecoration(
-          labelText: 'Research Title',
-          border: OutlineInputBorder(),
-        ),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Please enter a research title';
-          }
-          return null;
-        },
-      ),
-      const SizedBox(height: 16),
-      TextFormField(
-        controller: _descriptionController,
-        decoration: const InputDecoration(
-          labelText: 'Research Description',
-          border: OutlineInputBorder(),
-          alignLabelWithHint: true,
-        ),
-        maxLines: 3,
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Please enter a research description';
-          }
-          return null;
-        },
-      ),
-      const SizedBox(height: 16),
-      TextFormField(
-        controller: _yearController,
-        decoration: const InputDecoration(
-          labelText: 'Year',
-          border: OutlineInputBorder(),
-        ),
-        keyboardType: TextInputType.number,
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Please enter a year';
-          }
-          if (int.tryParse(value) == null) {
-            return 'Please enter a valid year';
-          }
-          return null;
-        },
-      ),
-    ];
-  }
-  
-  @override
-  Future<bool> saveActivity(String email) async {
-    try {
-      final research = {
-        'Title': _titleController.text.trim(),
-        'Description': _descriptionController.text.trim(),
-        'Year': int.parse(_yearController.text.trim()),
-        'Score': 85, // Default score for valid research
-      };
-      
-      // Save the research to the server
-      return await _apiService.saveResearch(email, research);
-    } catch (e) {
-      print('Error saving research: $e');
-      return false;
-    }
-  }
-}
-
-// Publications Tab Implementation
-class PublicationsTab extends ActivityTab {
-  const PublicationsTab({super.key});
-  
-  @override
-  State<PublicationsTab> createState() => _PublicationsTabState();
-}
-
-class _PublicationsTabState extends ActivityTabState<PublicationsTab> {
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _journalController = TextEditingController();
-  final TextEditingController _yearController = TextEditingController();
-  final TextEditingController _citationController = TextEditingController();
-  
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _journalController.dispose();
-    _yearController.dispose();
-    _citationController.dispose();
-    super.dispose();
-  }
-  
-  @override
-  String get activityTypeName => 'Publication';
-  
-  @override
-  List<Widget> buildActivitySpecificFields() {
-    return [
-      TextFormField(
-        controller: _titleController,
-        decoration: const InputDecoration(
-          labelText: 'Publication Title',
-          border: OutlineInputBorder(),
-        ),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Please enter a publication title';
-          }
-          return null;
-        },
-      ),
-      const SizedBox(height: 16),
-      TextFormField(
-        controller: _journalController,
-        decoration: const InputDecoration(
-          labelText: 'Journal/Conference',
-          border: OutlineInputBorder(),
-        ),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Please enter journal or conference name';
-          }
-          return null;
-        },
-      ),
-      const SizedBox(height: 16),
-      Row(
-        children: [
-          Expanded(
-            child: TextFormField(
-              controller: _yearController,
-              decoration: const InputDecoration(
-                labelText: 'Year',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter a year';
-                }
-                if (int.tryParse(value) == null) {
-                  return 'Please enter a valid year';
-                }
-                return null;
-              },
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: TextFormField(
-              controller: _citationController,
-              decoration: const InputDecoration(
-                labelText: 'Citation Count',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter citation count';
-                }
-                if (int.tryParse(value) == null) {
-                  return 'Please enter a valid number';
-                }
-                return null;
-              },
-            ),
-          ),
-        ],
-      ),
-    ];
-  }
-  
-  @override
-  Future<bool> saveActivity(String email) async {
-    try {
-      final publication = {
-        'Title': _titleController.text.trim(),
-        'Journal': _journalController.text.trim(),
-        'Year': int.parse(_yearController.text.trim()),
-        'Citation': int.parse(_citationController.text.trim()),
-        'Score': 85, // Default score for valid publication
-      };
-      
-      // Save the publication to the server
-      return await _apiService.savePublication(email, publication);
-    } catch (e) {
-      print('Error saving publication: $e');
-      return false;
-    }
-  }
-}
-
-// Guest Lectures Tab Implementation
-class GuestLecturesTab extends ActivityTab {
-  const GuestLecturesTab({super.key});
-  
-  @override
-  State<GuestLecturesTab> createState() => _GuestLecturesTabState();
-}
-
-class _GuestLecturesTabState extends ActivityTabState<GuestLecturesTab> {
-  final TextEditingController _topicController = TextEditingController();
-  final TextEditingController _institutionController = TextEditingController();
-  DateTime _lectureDate = DateTime.now();
-  
-  @override
-  void dispose() {
-    _topicController.dispose();
-    _institutionController.dispose();
-    super.dispose();
-  }
-  
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _lectureDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
-    );
-    
-    if (picked != null && picked != _lectureDate) {
-      setState(() {
-        _lectureDate = picked;
-      });
-    }
-  }
-  
-  @override
-  String get activityTypeName => 'Guest Lecture';
-  
-  @override
-  List<Widget> buildActivitySpecificFields() {
-    return [
-      TextFormField(
-        controller: _topicController,
-        decoration: const InputDecoration(
-          labelText: 'Lecture Topic',
-          border: OutlineInputBorder(),
-        ),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Please enter the lecture topic';
-          }
-          return null;
-        },
-      ),
-      const SizedBox(height: 16),
-      TextFormField(
-        controller: _institutionController,
-        decoration: const InputDecoration(
-          labelText: 'Institution/Organization',
-          border: OutlineInputBorder(),
-        ),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Please enter the institution name';
-          }
-          return null;
-        },
-      ),
-      const SizedBox(height: 16),
-      InkWell(
-        onTap: () => _selectDate(context),
-        child: InputDecorator(
-          decoration: const InputDecoration(
-            labelText: 'Date of Lecture',
-            border: OutlineInputBorder(),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '${_lectureDate.day}/${_lectureDate.month}/${_lectureDate.year}',
-              ),
-              const Icon(Icons.calendar_today, size: 20),
-            ],
-          ),
-        ),
-      ),
-    ];
-  }
-  
-  @override
-  Future<bool> saveActivity(String email) async {
-    try {
-      final guestLecture = {
-        'Topic': _topicController.text.trim(),
-        'Institution': _institutionController.text.trim(),
-        'Date': _lectureDate.toIso8601String(),
-        'Score': 85, // Default score for valid guest lecture
-      };
-      
-      // Save the guest lecture to the server
-      return await _apiService.saveGuestLecture(email, guestLecture);
-    } catch (e) {
-      print('Error saving guest lecture: $e');
-      return false;
-    }
-  }
-}
-
-// Self Development Tab Implementation
-class SelfDevelopmentTab extends ActivityTab {
-  const SelfDevelopmentTab({super.key});
-  
-  @override
-  State<SelfDevelopmentTab> createState() => _SelfDevelopmentTabState();
-}
-
-class _SelfDevelopmentTabState extends ActivityTabState<SelfDevelopmentTab> {
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _organizationController = TextEditingController();
-  DateTime _completionDate = DateTime.now();
-  String _activityType = 'Course';
-  
-  final List<String> _activityTypes = [
-    'Course',
-    'Workshop',
-    'Certification',
-    'Training',
-    'Conference',
-    'Seminar',
-  ];
-  
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _organizationController.dispose();
-    super.dispose();
-  }
-  
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _completionDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
-    );
-    
-    if (picked != null && picked != _completionDate) {
-      setState(() {
-        _completionDate = picked;
-      });
-    }
-  }
-  
-  @override
-  String get activityTypeName => 'Self Development Activity';
-  
-  @override
-  List<Widget> buildActivitySpecificFields() {
-    return [
-      DropdownButtonFormField<String>(
-        decoration: const InputDecoration(
-          labelText: 'Activity Type',
-          border: OutlineInputBorder(),
-        ),
-        value: _activityType,
-        items: _activityTypes.map((String type) {
-          return DropdownMenuItem<String>(
-            value: type,
-            child: Text(type),
-          );
-        }).toList(),
-        onChanged: (String? newValue) {
-          if (newValue != null) {
-            setState(() {
-              _activityType = newValue;
-            });
-          }
-        },
-        validator: (value) {
-          if (value == null || value.isEmpty) {
-            return 'Please select an activity type';
-          }
-          return null;
-        },
-      ),
-      const SizedBox(height: 16),
-      TextFormField(
-        controller: _titleController,
-        decoration: const InputDecoration(
-          labelText: 'Activity Title',
-          border: OutlineInputBorder(),
-        ),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Please enter the activity title';
-          }
-          return null;
-        },
-      ),
-      const SizedBox(height: 16),
-      TextFormField(
-        controller: _organizationController,
-        decoration: const InputDecoration(
-          labelText: 'Organization/Provider',
-          border: OutlineInputBorder(),
-        ),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Please enter the organization or provider';
-          }
-          return null;
-        },
-      ),
-      const SizedBox(height: 16),
-      InkWell(
-        onTap: () => _selectDate(context),
-        child: InputDecorator(
-          decoration: const InputDecoration(
-            labelText: 'Completion Date',
-            border: OutlineInputBorder(),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '${_completionDate.day}/${_completionDate.month}/${_completionDate.year}',
-              ),
-              const Icon(Icons.calendar_today, size: 20),
-            ],
-          ),
-        ),
-      ),
-    ];
-  }
-  
-  @override
-  Future<bool> saveActivity(String email) async {
-    try {
-      final selfDevelopment = {
-        'ActivityType': _activityType,
-        'Title': _titleController.text.trim(),
-        'Organization': _organizationController.text.trim(),
-        'Date': _completionDate.toIso8601String(),
-        'Score': 85, // Default score for valid self development activity
-      };
-      
-      // Save the self development activity to the server
-      return await _apiService.saveSelfDevelopment(email, selfDevelopment);
-    } catch (e) {
-      print('Error saving self development activity: $e');
-      return false;
-    }
   }
 }

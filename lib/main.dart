@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:performance_analzer2/models/perf.dart';
 import 'package:performance_analzer2/providers/auth_service.dart';
 import 'package:performance_analzer2/screens/auth/login.dart';
 import 'package:performance_analzer2/screens/onboarding.dart';
@@ -25,7 +26,10 @@ void main() async {
         ChangeNotifierProvider.value(value: userProvider),
         ChangeNotifierProvider(
           create: (_) => CertificateProvider(authService),
+          
         ),
+                ChangeNotifierProvider(create: (_) => PerformanceProvider()),
+
       ],
       child: MyApp(
         initialRoute: determineInitialRoute(
