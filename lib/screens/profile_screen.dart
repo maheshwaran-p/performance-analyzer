@@ -108,10 +108,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             floating: false,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                user.name,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-              ),
+              // title: Text(
+              //   user.name,
+              //   textAlign: TextAlign.center,
+              //   style: const TextStyle(color: Colors.white, fontSize: 16),
+              // ),
               background: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -156,7 +157,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 10),
+                                                const SizedBox(height: 10),
+                        Text(
+                user.name,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 20),
+              ),
+                        const SizedBox(height: 0),
                         Text(
                           user.isHod ? 'Head of Department' : 'Faculty Staff',
                           style: const TextStyle(
@@ -164,6 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             fontSize: 14,
                           ),
                         ),
+                        
                       ],
                     ),
                   ),
