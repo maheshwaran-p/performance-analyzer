@@ -76,6 +76,30 @@ class ApiService {
     }
   }
   
+  String mapReasonToCertificateType(String? reason) {
+  if (reason == null) return 'Normal certification';
+  
+  // Map specific authentication reasons to certificate categories
+  if (reason.contains('Technical') || reason.contains('technical')) {
+    return 'Technical Certifications';
+  } else if (reason.contains('Academic') || reason.contains('academic')) {
+    return 'Academic Publications';
+  } else if (reason.contains('Competition') || reason.contains('competition') || 
+             reason.contains('Achievement') || reason.contains('achievement')) {
+    return 'Competition Achievements';
+  } else if (reason.contains('Course') || reason.contains('course') || 
+             reason.contains('learning') || reason.contains('Learning')) {
+    return 'Online Courses';
+  } else if (reason.contains('Valid Achievement certificate identified')) {
+    return 'Achievements';
+  } else if (reason.contains('Valid Academic certificate identified')) {
+    return 'Academic Publications';
+  }
+  
+  // Default category if no specific mapping is found
+  return 'Normal certification';
+}
+
   Future<bool> saveCertificates(String email, List<Certificate> certificates) async {
   try {
     print('saving cert');
@@ -84,13 +108,15 @@ class ApiService {
     
     for (var cert in certificates) {
       // Convert certificates to the format expected by the API
+      final certificateType = mapReasonToCertificateType(cert.authenticationReason);
+
       certificateData.add({
         'filename': cert.filename,
         'fileType': cert.fileType,
         'fileURL': await _uploadFile(cert.file, cert.filename),
         'score': cert.isOriginal == true ? 85 : 0,
         'isOriginal': cert.isOriginal ?? false,
-        'certificateType': cert.authenticationReason ?? 'Unknown',
+        'certificateType': certificateType ?? 'Achievements',
       });
     }
     

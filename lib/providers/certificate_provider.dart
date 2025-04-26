@@ -7,6 +7,7 @@ import 'package:performance_analzer2/providers/auth_service.dart';
 import 'package:performance_analzer2/service/api_service.dart';
 import 'dart:convert';
 import '../models/certificate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CertificateProvider extends ChangeNotifier {
   final CertificateAuthenticationService authService;
@@ -36,7 +37,11 @@ class CertificateProvider extends ChangeNotifier {
 
   // Load server certificates
   Future<void> loadServerCertificates() async {
+    print('load cert called');
+
+final prefs = await SharedPreferences.getInstance();
     if (_currentUserEmail == null) {
+      _currentUserEmail= prefs.getString('user_email')  ;       
       return;
     }
     
@@ -45,7 +50,7 @@ class CertificateProvider extends ChangeNotifier {
       notifyListeners();
       
       _serverCertificates = await _apiService.getCertificates(_currentUserEmail!);
-      
+      print('_serverCertificates--$_serverCertificates');
       // Calculate the average score based on valid server certificates only
       if (_serverCertificates.isNotEmpty) {
         final validCertificates = _serverCertificates.where((cert) => 

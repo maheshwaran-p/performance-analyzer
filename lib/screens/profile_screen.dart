@@ -26,8 +26,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfileData() async {
+    
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
+            final certProvider = Provider.of<CertificateProvider>(context, listen: false);
+      await certProvider.loadServerCertificates();
       if (userProvider.isLoggedIn) {
         final profileData = await userProvider.getProfile();
         setState(() {
@@ -83,6 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context);
     final certificateProvider = Provider.of<CertificateProvider>(context);
+    // certificateProvider.serverCertificates();
 
     if (_isLoading) {
       return const Center(
@@ -179,6 +183,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+                
                 // Professional Stats
                 _buildStatsCard(context, certificateProvider),
 
@@ -216,7 +221,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _buildCertificateCategoriesCard(),
 
                 // Recent Certificates
-                _buildRecentCertificatesCard(certificateProvider),
+                _buildRecentCertificatesCard(),
               ]),
             ),
           ),
@@ -539,21 +544,17 @@ Color _getCategoryColor(String category) {
       return Colors.orange;
     case 'Online Courses':
       return Colors.green;
-    case 'Valid Achievement certificate identified':
-      return Colors.teal;
-    case 'Valid Academic certificate identified':
+    case 'Achievements':
+      return Colors.indigo;
+    case 'Normal certification':
       return Colors.indigo;
     default:
       return Colors.grey.shade700;
   }
 }
 
-Widget _buildRecentCertificatesCard(CertificateProvider certificateProvider) {
-  final originalCertificates =
-      certificateProvider.serverCertificates
-          .where((cert) => cert['IsOriginal'] == true)
-          .toList();
 
+Widget _buildRecentCertificatesCard() {
   return Card(
     elevation: 4,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -584,184 +585,232 @@ Widget _buildRecentCertificatesCard(CertificateProvider certificateProvider) {
                   ),
                 ),
               ),
-              if (originalCertificates.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${originalCertificates.length} verified',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                ),
             ],
           ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Divider(height: 1),
           ),
-          if (originalCertificates.isEmpty)
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(height: 16),
-                  Icon(
-                    Icons.source_outlined,
-                    size: 48,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No original certificates found',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Upload and verify your certificates to see them here',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 14,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: originalCertificates.length > 3 ? 3 : originalCertificates.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final cert = originalCertificates[index];
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Icon(
-                      Icons.verified,
-                      color: Colors.green.shade700,
-                    ),
-                  ),
-                  title: Text(
-                    cert['CertificateName']?.toString() ??
-                        cert['filename']?.toString() ??
-                        'Certificate ${index + 1}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w500,
-                      fontSize: 15,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Row(
+          // Use Consumer here to react to changes in the certificate provider
+          Consumer<CertificateProvider>(
+            builder: (context, certificateProvider, child) {
+              // Check if still loading from server
+              if (certificateProvider.isLoading) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade100,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Score: ${cert['Score'] ?? cert['score'] ?? 0}',
-                          style: TextStyle(
-                            color: Colors.green.shade800,
-                            fontSize: 12,
-                          ),
+                      const SizedBox(height: 16),
+                      const CircularProgressIndicator(
+                        color: Colors.green,
+                        strokeWidth: 3,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Loading your certificates...',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      if (cert['certificateType'] != null || cert['CertificateType'] != null)
-                        Expanded(
-                          child: Text(
-                            cert['certificateType'] ?? cert['CertificateType'] ?? '',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 12,
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                );
+              }
+
+              // Extract original certificates inside the Consumer
+              final originalCertificates =
+                  certificateProvider.serverCertificates
+                      .where((cert) => cert['IsOriginal'] == true)
+                      .toList();
+              
+              print('Consumer rebuilding with ${originalCertificates.length} certificates');
+              
+              // Show empty state or certificates based on data
+              if (originalCertificates.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 16),
+                      Icon(
+                        Icons.source_outlined,
+                        size: 48,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No original certificates found',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Upload and verify your certificates to see them here',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                );
+              } else {
+                // Display certificate list when there are items
+                return Column(
+                  children: [
+                    // Certificate count badge
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.green.withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        '${originalCertificates.length} verified certificates',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ),
+                    // Certificate list 
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: originalCertificates.length > 3 ? 3 : originalCertificates.length,
+                      separatorBuilder: (context, index) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final cert = originalCertificates[index];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Icon(
+                              Icons.verified,
+                              color: Colors.green.shade700,
+                            ),
+                          ),
+                          title: Text(
+                            cert['CertificateName']?.toString() ??
+                                cert['filename']?.toString() ??
+                                'Certificate ${index + 1}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 15,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                    ],
-                  ),
-                  trailing: const Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
-                  ),
-                );
-              },
-            ),
-          if (originalCertificates.length > 3)
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: InkWell(
-                onTap: () {
-                  // Implement view all certificates
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => AllCertificatesScreen(
-                        certificates: originalCertificates,
-                      ),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: Colors.green.withOpacity(0.3),
-                    ),
-                  ),
-                  child: const Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'View All Certificates',
-                          style: TextStyle(
+                          subtitle: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade100,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'Score: ${cert['Score'] ?? cert['score'] ?? 0}',
+                                  style: TextStyle(
+                                    color: Colors.green.shade800,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              if (cert['certificateType'] != null || cert['CertificateType'] != null)
+                                Expanded(
+                                  child: Text(
+                                    cert['certificateType'] ?? cert['CertificateType'] ?? '',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          trailing: const Icon(
+                            Icons.check_circle,
                             color: Colors.green,
-                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      },
+                    ),
+                    
+                    // View All button
+                    if (originalCertificates.length > 3)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => AllCertificatesScreen(
+                                  certificates: originalCertificates,
+                                ),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.green.withOpacity(0.3),
+                              ),
+                            ),
+                            child: const Center(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'View All Certificates',
+                                    style: TextStyle(
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Icon(
+                                    Icons.arrow_forward,
+                                    size: 16,
+                                    color: Colors.green,
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                        SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_forward,
-                          size: 16,
-                          color: Colors.green,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+                      ),
+                  ],
+                );
+              }
+            },
+          ),
         ],
       ),
     ),
   );
 }
-
 }
