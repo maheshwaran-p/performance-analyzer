@@ -29,6 +29,21 @@ class _PerformanceScreenState extends State<PerformanceScreen> with SingleTicker
     super.dispose();
   }
 
+String _getPerformanceLevel(int score) {
+  if (score >= 85) return 'Platinum';
+  if (score >= 70) return 'Gold';
+  if (score >= 60) return 'Silver';
+  if (score >= 50) return 'Bronze';
+  return 'Basic';
+}
+
+Color _getLevelColor(int score) {
+  if (score >= 85) return Colors.green.shade300; // Platinum
+  if (score >= 70) return Colors.amber.shade300; // Gold
+  if (score >= 60) return Colors.grey.shade400; // Silver
+  if (score >= 50) return Colors.brown.shade300; // Bronze
+  return Colors.grey.shade600; // Basic
+}
   Future<void> _loadPerformanceData() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final performanceProvider = Provider.of<PerformanceProvider>(context, listen: false);
@@ -232,135 +247,172 @@ tabs: const [
       },
     );
   }
-
-  Widget _buildPerformanceHeader(BuildContext context, int overallScore, ActivityCounts counts) {
-    String performanceLabel = _getPerformanceLabel(overallScore);
-    Color performanceColor = _getPerformanceColor(overallScore);
-    
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.blue.shade700, Colors.blue.shade900],
-        ),
+Widget _buildPerformanceHeader(BuildContext context, int overallScore, ActivityCounts counts) {
+  String performanceLabel = _getPerformanceLabel(overallScore);
+  Color performanceColor = _getPerformanceColor(overallScore);
+  String level = _getPerformanceLevel(overallScore);
+  Color levelColor = _getLevelColor(overallScore);
+  
+  return Container(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Colors.blue.shade700, Colors.blue.shade900],
       ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Row(
-                children: [
-SizedBox(
-  width: 100,
-  height: 100,
-  child: Stack(
-    alignment: Alignment.center,
-    children: [
-      // Outer progress ring
-      SizedBox(
-        width: 100,
-        height: 100,
-        child: CircularProgressIndicator(
-          value: overallScore / 100,
-          strokeWidth: 8,
-          backgroundColor: Colors.white.withOpacity(0.2),
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-        ),
-      ),
-      
-      // Inner background circle
-      Container(
-        width: 70,
-        height: 70,
-        decoration: BoxDecoration(
-          color: Colors.blue.shade900,
-          shape: BoxShape.circle,
-        ),
+    ),
+    child: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              '$overallScore',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const Text(
-              'points',
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.white70,
-              ),
+            Row(
+              children: [
+                // Performance circle
+                SizedBox(
+                  width: 100,
+                  height: 100,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Outer progress ring
+                      SizedBox(
+                        width: 100,
+                        height: 100,
+                        child: CircularProgressIndicator(
+                          value: overallScore / 100,
+                          strokeWidth: 8,
+                          backgroundColor: Colors.white.withOpacity(0.2),
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      
+                      // Inner background circle
+                      Container(
+                        width: 70,
+                        height: 70,
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade900,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$overallScore',
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const Text(
+                              'points',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        performanceLabel,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: performanceColor,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      // Level badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10, 
+                          vertical: 4
+                        ),
+                        decoration: BoxDecoration(
+                          color: levelColor.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: levelColor,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.workspace_premium,
+                              size: 14,
+                              color: levelColor,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              '$level Level',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: levelColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Based on ${counts.total} activities',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.white70,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.calendar_today,
+                              size: 14,
+                              color: Colors.white70,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              "Last updated: ${DateFormat('dd MMM yyyy').format(DateTime.now())}",
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
-    ],
-  ),
-),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          performanceLabel,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: performanceColor,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          'Based on ${counts.total} activities',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.white70,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.calendar_today,
-                                size: 14,
-                                color: Colors.white70,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                "Last updated: ${DateFormat('dd MMM yyyy').format(DateTime.now())}",
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildOverviewTab(BuildContext context, PerformanceProvider provider, PerformanceData data) {
     final categoryScores = data.categoryScores;
