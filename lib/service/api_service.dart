@@ -58,7 +58,7 @@ class ApiService {
       final response = await http.get(
         Uri.parse('$baseUrl?action=getProfile&email=$email'),
       );
-      
+      print('$baseUrl?action=getProfile&email=$email');
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
         if (result['success'] == true) {
@@ -76,46 +76,100 @@ class ApiService {
     }
   }
   
-  // Save certificates
   Future<bool> saveCertificates(String email, List<Certificate> certificates) async {
-    try {
-      // First upload files to get URLs
-      List<Map<String, dynamic>> certificateData = [];
+  try {
+    print('saving cert');
+    // First upload files to get URLs
+    List<Map<String, dynamic>> certificateData = [];
+    
+    for (var cert in certificates) {
+      // Convert certificates to the format expected by the API
+      certificateData.add({
+        'filename': cert.filename,
+        'fileType': cert.fileType,
+        'fileURL': await _uploadFile(cert.file, cert.filename),
+        'score': cert.isOriginal == true ? 85 : 0,
+        'isOriginal': cert.isOriginal ?? false,
+        'certificateType': cert.authenticationReason ?? 'Unknown',
+      });
+    }
+    
+    // Create the initial request
+    final initialResponse = await http.post(
+      Uri.parse(baseUrl),
+      body: jsonEncode({
+        'action': 'saveCertificates',
+        'email': email,
+        'certificates': certificateData,
+      }),
+      headers: {'Content-Type': 'application/json'},
+      // followRedirects: false,
+    );
+    
+    // Detailed logging for debugging
+    print('Initial response status: ${initialResponse.statusCode}');
+    print('Initial response headers: ${initialResponse.headers}');
+    
+    // Check if we got a redirect (status code 302)
+    if (initialResponse.statusCode == 302 && initialResponse.headers.containsKey('location')) {
+      // Get the redirect URL
+      final redirectUrl = initialResponse.headers['location']!;
+      print('Following redirect to: $redirectUrl');
       
-      for (var cert in certificates) {
-        // Convert certificates to the format expected by the API
-        certificateData.add({
-          'filename': cert.filename,
-          'fileType': cert.fileType,
-          'fileURL': await _uploadFile(cert.file, cert.filename),
-          'score': cert.isOriginal == true ? 85 : 40,
-          'isOriginal': cert.isOriginal ?? false,
-          'certificateType': cert.authenticationReason ?? 'Unknown',
-        });
-      }
-      
-      // Send certificate data to Google Apps Script
-      final response = await http.post(
-        Uri.parse(baseUrl),
-        body: jsonEncode({
-          'action': 'saveCertificates',
-          'email': email,
-          'certificates': certificateData,
-        }),
-        headers: {'Content-Type': 'application/json'},
+      // For Google Apps Script, we need to use GET instead of POST for the redirect
+      // This is a common issue with Apps Script web apps
+      final redirectResponse = await http.get(
+        Uri.parse(redirectUrl),
+        headers: {
+          'Accept': 'application/json',
+        },
       );
       
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        return result['success'] == true;
+      // Log detailed information about redirect response
+      print('Redirect response status: ${redirectResponse.statusCode}');
+      print('Redirect response headers: ${redirectResponse.headers}');
+      print('Redirect response body: ${redirectResponse.body.substring(0, min(100, redirectResponse.body.length))}...');
+      
+      if (redirectResponse.statusCode == 200) {
+        try {
+          final result = jsonDecode(redirectResponse.body);
+          return result['success'] == true;
+        } catch (e) {
+          print('Error parsing JSON from redirect response: $e');
+          // Check if the body contains a success message even if not valid JSON
+          return redirectResponse.body.contains('success') || 
+                 redirectResponse.body.contains('saved');
+        }
       } else {
-        throw Exception('Failed to save certificates: ${response.statusCode}');
+        throw Exception('Failed after redirect: ${redirectResponse.statusCode}');
       }
-    } catch (e) {
-      print('Error saving certificates: $e');
-      return false;
+    } 
+    // If it's a 200 response, process normally
+    else if (initialResponse.statusCode == 200) {
+      print('Successfully saved certificates without redirect');
+      try {
+        final result = jsonDecode(initialResponse.body);
+        return result['success'] == true;
+      } catch (e) {
+        print('Error parsing JSON from direct response: $e');
+        return initialResponse.body.contains('success') || 
+               initialResponse.body.contains('saved');
+      }
+    } 
+    // Any other status code is treated as an error
+    else {
+      throw Exception('Failed to save certificates: ${initialResponse.statusCode}, Body: ${initialResponse.body.substring(0, min(100, initialResponse.body.length))}...');
     }
+  } catch (e) {
+    print('Error saving certificates: $e');
+    return false;
   }
+}
+
+// Helper function to get minimum of two numbers (for string truncation)
+int min(int a, int b) {
+  return a < b ? a : b;
+}
   
   // Helper method to upload a file and get URL
   // This is a placeholder - in a real app, you'd implement file upload to storage

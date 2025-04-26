@@ -26,37 +26,47 @@ class ResultsScreen extends StatelessWidget {
       body: Consumer<CertificateProvider>(
         builder: (context, provider, child) {
           final results = provider.results;
-          final averageScore = provider.averageScore;
           
           // Check if there are any valid certificates
-          final hasValidCertificates = results.any((result) => result['isOriginal'] == true);
+          final validResults = results.where((result) => result['isOriginal'] == true).toList();
+          final hasValidCertificates = validResults.isNotEmpty;
+          
+          // Calculate average score only for valid certificates
+          final averageScore = hasValidCertificates 
+              ? (validResults.map((r) => r['score'] as int).reduce((a, b) => a + b) / validResults.length).round()
+              : 0;
           
           return ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
-              // Overall score card
-              _buildOverallScoreCard(context, averageScore),
+              // Only show overall score card if there are valid certificates
+              if (hasValidCertificates)
+                _buildOverallScoreCard(context, averageScore),
               
-              const SizedBox(height: 20),
+              if (hasValidCertificates)
+                const SizedBox(height: 20),
               
               // Certificate details title
-              Text(
-                'Certificate Details',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10.0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.description, color: Colors.blue),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Certificate Details',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
               
               // Certificate result cards
               ...results.asMap().entries.map((entry) {
                 final index = entry.key;
                 final result = entry.value;
-                
-                // If certificate type is unknown, ensure score is 0
-                if (result['certificateType'] == 'Unknown' || result['certificateType'] == 'Unidentified') {
-                  result['score'] = 0;
-                }
                 
                 return _buildResultCard(context, result, index);
               }).toList(),
@@ -67,6 +77,9 @@ class ResultsScreen extends StatelessWidget {
               if (hasValidCertificates)
                 _buildSubmitButton(context, provider),
               
+              if (!hasValidCertificates)
+                _buildNoValidCertificatesMessage(context),
+                
               const SizedBox(height: 20),
               
               // Recommendations
@@ -82,21 +95,66 @@ class ResultsScreen extends StatelessWidget {
     );
   }
   
+  Widget _buildNoValidCertificatesMessage(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.orange,
+            size: 48,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'No Valid Certificates Found',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: Colors.orange.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'None of your uploaded certificates passed our validation checks. Please check the recommendations below or try uploading different certificates.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
   Widget _buildOverallScoreCard(BuildContext context, int averageScore) {
     return Card(
-      elevation: 2,
+      elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            Text(
-              'Your Overall Score',
-              style: Theme.of(context).textTheme.titleMedium,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.insights, color: Colors.blue),
+                const SizedBox(width: 8),
+                Text(
+                  'Your Valid Certificates Score',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               height: 180,
@@ -134,11 +192,21 @@ class ResultsScreen extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              _getScoreMessage(averageScore),
-              style: const TextStyle(fontStyle: FontStyle.italic),
-              textAlign: TextAlign.center,
+            const SizedBox(height: 15),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: _getScoreColor(averageScore).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                _getScoreMessage(averageScore),
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: _getScoreColor(averageScore),
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),
@@ -147,107 +215,150 @@ class ResultsScreen extends StatelessWidget {
   }
   
   Widget _buildSubmitButton(BuildContext context, CertificateProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: SizedBox(
-        width: double.infinity,
-        height: 50,
-        child: ElevatedButton(
-          onPressed: () async {
-            // Show loading indicator
-            showDialog(
-              context: context,
-              barrierDismissible: false,
-              builder: (context) => const Center(
-                child: CircularProgressIndicator(),
-              ),
-            );
-            
-            try {
-              // Get current user email
-              final userEmail = Provider.of<UserProvider>(context, listen: false).currentUser?.email;
-              
-              if (userEmail != null) {
-                // Only submit certificates that are valid
-                final validCertificates = provider.certificates.where((cert) => cert.isOriginal == true).toList();
-                
-                // Save the valid certificates
-                await provider.saveValidCertificates(userEmail);
-                
-                // Dismiss loading indicator
-                if (context.mounted) Navigator.pop(context);
-                
-                // Show success message
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Certificates successfully submitted!'),
-                      backgroundColor: Colors.green,
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.upload_file, color: Colors.green),
+                const SizedBox(width: 8),
+                Text(
+                  'Submit Your Valid Certificates',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Click the button below to save your valid certificates to your profile. Only certificates marked as valid will be submitted.',
+              style: TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: () async {
+                  // Show loading indicator
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(
+                      child: CircularProgressIndicator(),
                     ),
                   );
                   
-                  // Navigate back to home screen
-                  Navigator.pop(context);
-                }
-              } else {
-                // Dismiss loading indicator
-                if (context.mounted) Navigator.pop(context);
-                
-                // Show error message if user not logged in
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please log in to submit certificates'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            } catch (e) {
-              // Dismiss loading indicator
-              if (context.mounted) Navigator.pop(context);
-              
-              // Show error message
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error submitting certificates: $e'),
-                    backgroundColor: Colors.red,
+                  try {
+                    // Get current user email
+                    final userEmail = Provider.of<UserProvider>(context, listen: false).currentUser?.email;
+                    
+                    if (userEmail != null) {
+                      // Save the valid certificates
+                      final success = await provider.saveValidCertificates(userEmail);
+                      
+                      // Dismiss loading indicator
+                      if (context.mounted) Navigator.pop(context);
+                      
+                      // Show success message
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success 
+                                ? 'Certificates successfully submitted!' 
+                                : 'No valid certificates to submit',
+                            ),
+                            backgroundColor: success ? Colors.green : Colors.orange,
+                          ),
+                        );
+                        
+                        if (success) {
+                          // Navigate back to home screen
+                          Navigator.pop(context);
+                        }
+                      }
+                    } else {
+                      // Dismiss loading indicator
+                      if (context.mounted) Navigator.pop(context);
+                      
+                      // Show error message if user not logged in
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please log in to submit certificates'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    // Dismiss loading indicator
+                    if (context.mounted) Navigator.pop(context);
+                    
+                    // Show error message
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error submitting certificates: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                );
-              }
-            }
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.cloud_upload),
+                    SizedBox(width: 10),
+                    Text(
+                      'Submit Valid Certificates',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          child: const Text(
-            'Submit Valid Certificates',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          ],
         ),
       ),
     );
   }
   
   Widget _buildResultCard(BuildContext context, dynamic result, int index) {
-    // Ensure score is 0 if certificate type is Unknown
-    final score = (result['certificateType'] == 'Unknown' || 
-                    result['certificateType'] == 'Unidentified') 
-                    ? 0 
-                    : result['score'];
-                    
+    final isOriginal = result['isOriginal'] as bool? ?? false;
+    final certificateType = result['certificateType'] as String? ?? 'Unknown';
+    final score = isOriginal ? (result['score'] as int?) ?? 0 : 0;
+    final authReason = result['authenticationReason'] as String? ?? 'No information available';
+    
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isOriginal ? Colors.green.withOpacity(0.3) : Colors.red.withOpacity(0.3),
+          width: 1,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -257,117 +368,107 @@ class ResultsScreen extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(18),
+                    color: isOriginal ? Colors.green.shade50 : Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Center(
-                    child: Text(
-                      '${index + 1}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade700,
-                      ),
+                    child: Icon(
+                      isOriginal ? Icons.check_circle : Icons.cancel,
+                      color: isOriginal ? Colors.green : Colors.red,
+                      size: 24,
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    result['filename'] ?? 'Unknown Filename',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        result['filename'] ?? 'Unknown Filename',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isOriginal ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              isOriginal ? 'Valid' : 'Invalid',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isOriginal ? Colors.green : Colors.red,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
             const Divider(height: 24),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Certificate Type:',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      result['certificateType'] ?? 'Unknown',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ],
+                Expanded(
+                  child: _buildInfoItem(
+                    'Certificate Type',
+                    certificateType,
+                    Icons.category,
+                  ),
                 ),
-                // Score display
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text(
-                      'Score:',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
+                if (isOriginal)
+                  Expanded(
+                    child: _buildInfoItem(
+                      'Score',
                       '$score',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: _getScoreColor(score),
-                        fontSize: 16,
-                      ),
+                      Icons.star,
+                      valueColor: _getScoreColor(score),
                     ),
-                  ],
-                ),
+                  ),
               ],
             ),
-            const SizedBox(height: 12),
-            // Validation status
+            const SizedBox(height: 16),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: result['isOriginal'] 
-                  ? Colors.green.withOpacity(0.1) 
-                  : Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    result['isOriginal'] 
-                      ? Icons.check_circle 
-                      : Icons.cancel,
-                    color: result['isOriginal'] 
-                      ? Colors.green 
-                      : Colors.red,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    result['isOriginal'] ? 'Valid' : 'Invalid',
+                  const Text(
+                    'Authentication Details:',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: result['isOriginal'] 
-                        ? Colors.green 
-                        : Colors.red,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    authReason,
+                    style: TextStyle(
+                      color: Colors.grey[700],
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Authentication Reason
-            Text(
-              result['authenticationReason'] ?? 'No additional information',
-              style: TextStyle(
-                color: Colors.grey[700],
-                fontStyle: FontStyle.italic,
               ),
             ),
           ],
@@ -376,11 +477,41 @@ class ResultsScreen extends StatelessWidget {
     );
   }
   
+  Widget _buildInfoItem(String label, String value, IconData icon, {Color? valueColor}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 16, color: Colors.grey[600]),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
+            color: valueColor,
+          ),
+        ),
+      ],
+    );
+  }
+  
   Color _getScoreColor(int score) {
-    if (score >= 85) return Colors.green;
-    if (score >= 70) return Colors.blue;
-    if (score >= 50) return Colors.orange;
-    return Colors.red;
+    if (score >= 85) return Colors.green.shade900;
+    if (score >= 70) return Colors.green.shade500;
+    if (score >= 50) return Colors.green.shade400;
+    return Colors.red.shade700;
   }
   
   String _getScoreMessage(int score) {

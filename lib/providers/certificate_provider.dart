@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -45,10 +46,19 @@ class CertificateProvider extends ChangeNotifier {
       
       _serverCertificates = await _apiService.getCertificates(_currentUserEmail!);
       
-      // Calculate the average score based on server certificates
+      // Calculate the average score based on valid server certificates only
       if (_serverCertificates.isNotEmpty) {
-        final scores = _serverCertificates.map((cert) => cert['Score'] as int? ?? 0);
-        _averageScore = (scores.reduce((a, b) => a + b) / _serverCertificates.length).round();
+        final validCertificates = _serverCertificates.where((cert) => 
+            (cert['Score'] as int? ?? 0) > 0).toList();
+            
+        if (validCertificates.isNotEmpty) {
+          final scores = validCertificates.map((cert) => cert['Score'] as int? ?? 0);
+          _averageScore = (scores.reduce((a, b) => a + b) / validCertificates.length).round();
+        } else {
+          _averageScore = 0;
+        }
+      } else {
+        _averageScore = 0;
       }
       
     } catch (e) {
@@ -96,40 +106,41 @@ class CertificateProvider extends ChangeNotifier {
     }
   }
 
-// Add this method to your CertificateProvider class
-
-Future<bool> saveValidCertificates(String email) async {
-  try {
-    _isLoading = true;
-    notifyListeners();
-    
-    // Filter only valid certificates
-    final validCertificates = _certificates.where((cert) => cert.isOriginal == true).toList();
-    
-    if (validCertificates.isEmpty) {
+  // Save only valid certificates
+  Future<bool> saveValidCertificates(String email) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+      
+      // Filter only valid certificates
+      final validCertificates = _certificates.where((cert) => cert.isOriginal == true).toList();
+      
+      if (validCertificates.isEmpty) {
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+      
+      print('saving cert');
+      // Save certificates to the server
+      final success = await _apiService.saveCertificates(email, validCertificates);
+      
+      if (success) {
+        // Reload server certificates to update the list
+        await loadServerCertificates();
+      }
+      
+      _isLoading = false;
+      notifyListeners();
+      return success;
+    } catch (e) {
+      print('Error saving valid certificates: $e');
       _isLoading = false;
       notifyListeners();
       return false;
     }
-    
-    // Save certificates to the server
-    final success = await _apiService.saveCertificates(email, validCertificates);
-    
-    if (success) {
-      // Reload server certificates to update the list
-      await loadServerCertificates();
-    }
-    
-    _isLoading = false;
-    notifyListeners();
-    return success;
-  } catch (e) {
-    print('Error saving valid certificates: $e');
-    _isLoading = false;
-    notifyListeners();
-    return false;
   }
-}
+
   void removeCertificate(int index) {
     if (index >= 0 && index < _certificates.length) {
       _certificates.removeAt(index);
@@ -145,98 +156,129 @@ Future<bool> saveValidCertificates(String email) async {
     notifyListeners();
   }
 
-  Future<void> analyzeCertificates() async {
-    try {
-      _isLoading = true;
-      _results.clear();
-      _allRecommendations.clear();
-      notifyListeners();
+  // import 'dart:math' as math;
 
-      for (var certificate in _certificates) {
-        try {
-          final authResult = await authService.authenticateCertificate(certificate.file);
+Future<void> analyzeCertificates() async {
+  try {
+    _isLoading = true;
+    _results.clear();
+    _allRecommendations.clear();
+    notifyListeners();
+
+    // Create a random number generator
+    final random = math.Random();
+
+    for (var certificate in _certificates) {
+      try {
+        final authResult = await authService.authenticateCertificate(certificate.file);
+        print(authResult);
+        
+        // Determine if certificate is valid based on type
+        final certificateType = authResult['certificateType'] ?? 'Unknown';
+        final isValid = certificateType != 'Unidentified' && certificateType != 'Unknown';
+        print('certificateType---$certificateType');
+        
+        // Calculate score based on validity
+        int score = 0; // Default score for invalid certificates
+        
+        // Only calculate score if the certificate is valid
+        if (isValid) {
+          // Generate a random score between 65 and 75
+          score = (63 + random.nextInt(11)); // This gives a range from 65 to 75
           
-          // Determine if certificate is valid based on type
-          final certificateType = authResult['certificateType'] ?? 'Unknown';
-          final isValid = certificateType != 'Unidentified';
-          
-          // Calculate score based on validity
-          int score = 0; // Default score for invalid certificates
-          
-          // Only calculate score if the certificate is valid
-          if (isValid) {
-            score = 85;  // Base score for valid certificate types
-            
-            // Add additional score points if it passes other validations 
-            if (authResult['isOriginal'] == true) {
-              score += 15;
-            }
+          // Add additional score points if it passes other validations
+          if (authResult['isOriginal'] == true) {
+            score += 15;
           }
           
-          final result = {
-            'filename': certificate.filename,
-            'type': certificate.fileType,
-            'score': score,
-            'isOriginal': isValid, // Based on certificate type
-            'authenticationReason': isValid 
-                ? 'Valid ${certificateType} certificate identified' 
-                : 'Certificate type could not be determined',
-            'certificateType': certificateType
-          };
-          
-          // Update the certificate object with validation results
-          certificate.isOriginal = isValid;
-          certificate.authenticationReason = isValid 
-              ? 'Valid ${certificateType} certificate identified' 
-              : 'Certificate type could not be determined';
-          
-          _results.add(result);
-        } catch (e) {
-          _results.add({
-            'filename': certificate.filename,
-            'type': certificate.fileType,
-            'score': 0,
-            'isOriginal': false,
-            'authenticationReason': 'Authentication failed: $e',
-            'certificateType': 'Unknown'
-          });
+          // Ensure score never exceeds 100
+          if (score > 100) {
+            score = 100;
+          }
         }
+        
+        final result = {
+          'filename': certificate.filename,
+          'type': certificate.fileType,
+          'score': score,
+          'isOriginal': isValid, // Based on certificate type
+          'authenticationReason': authResult['reason'] ?? 
+              (isValid 
+                ? 'Valid ${certificateType} certificate identified' 
+                : 'Certificate type could not be determined'),
+          'certificateType': certificateType
+        };
+        
+        // Update the certificate object with validation results
+        certificate.isOriginal = isValid;
+        certificate.authenticationReason = authResult['reason'] ?? 
+            (isValid 
+              ? 'Valid ${certificateType} certificate identified' 
+              : 'Certificate type could not be determined');
+        
+        _results.add(result);
+      } catch (e) {
+        _results.add({
+          'filename': certificate.filename,
+          'type': certificate.fileType,
+          'score': 0,
+          'isOriginal': false,
+          'authenticationReason': 'Authentication failed: $e',
+          'certificateType': 'Unknown'
+        });
       }
-
-      _calculateAverageScore();
-      _generateRecommendations();
-      
-      // Save certificates to server if user is logged in
-      if (_currentUserEmail != null) {
-        await _apiService.saveCertificates(_currentUserEmail!, _certificates);
-        // Reload server certificates after saving
-        await loadServerCertificates();
-      }
-      
-    } catch (e) {
-      print('Error in analyzeCertificates: $e');
-    } finally {
-      _isLoading = false;
-      notifyListeners();
     }
-  }
 
-  void _calculateAverageScore() {
-    if (_results.isEmpty) {
+    // Calculate average score only for valid certificates
+    _calculateValidAverageScore();
+    _generateRecommendations();
+    
+    // Don't automatically save to server - wait for submit button
+    
+  } catch (e) {
+    print('Error in analyzeCertificates: $e');
+  } finally {
+    _isLoading = false;
+    notifyListeners();
+  }
+}
+
+  void _calculateValidAverageScore() {
+    final validResults = _results.where((result) => result['isOriginal'] == true).toList();
+    
+    if (validResults.isEmpty) {
       _averageScore = 0;
       return;
     }
 
-    final scores = _results.map((r) => r['score'] as int);
-    _averageScore = (scores.reduce((a, b) => a + b) / _results.length).round();
+    final scores = validResults.map((r) => r['score'] as int);
+    _averageScore = (scores.reduce((a, b) => a + b) / validResults.length).round();
   }
 
   void _generateRecommendations() {
     _allRecommendations.clear();
+    
+    final validCount = _results.where((result) => result['isOriginal'] == true).length;
+    final invalidCount = _results.length - validCount;
 
+    // Always add some basic recommendations
     _allRecommendations.add('Carefully verify the authenticity of your certificates.');
     _allRecommendations.add('Ensure certificates contain clear, official text and layout.');
-    _allRecommendations.add('Some certificates failed validation. Consider getting official copies.');
+    
+    // Add specific recommendations based on results
+    if (invalidCount > 0) {
+      _allRecommendations.add('${invalidCount} certificate(s) failed validation. Consider getting official copies.');
+      _allRecommendations.add('Make sure your certificates are clearly scanned with no blurry text.');
+    }
+    
+    if (_averageScore < 70) {
+      _allRecommendations.add('Try to obtain certificates with higher recognition value.');
+    }
+    
+    if (validCount > 0) {
+      _allRecommendations.add('Valid certificates will be highlighted in your profile.');
+    }
+    
     _allRecommendations.add('Certificates from different domains may require specialized verification.');
   }
 }
