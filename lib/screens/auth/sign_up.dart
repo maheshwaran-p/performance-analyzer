@@ -1,11 +1,15 @@
+
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import 'package:performance_analzer2/screens/auth/login.dart';
+import 'package:performance_analzer2/service/constants.dart';
 
 class SignupForm extends StatefulWidget {
-  const SignupForm({super.key});
+  final String email;
+  const SignupForm({super.key, required this.email});
 
   @override
   State<SignupForm> createState() => _SignupFormState();
@@ -15,11 +19,14 @@ class _SignupFormState extends State<SignupForm> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _regNoController = TextEditingController();
-  final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _otpController = TextEditingController();
+
+  // Account type dropdown value
+  String _accountType = 'Staff'; // Default value
+  final List<String> _accountTypes = ['HOD', 'Staff'];
 
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
@@ -31,7 +38,7 @@ class _SignupFormState extends State<SignupForm> {
   final List<TextEditingController> _skillControllers = [];
   final List<TextEditingController> _educationControllers = [];
 
-  final String baseUrl = 'https://script.google.com/macros/s/AKfycbwuLlmlyZ5jS8Ee3lT9sJjIGOLoa4mOJpAYzEv3i2hwhR8MNNBBf141akzPJIJRv8sMFA/exec';
+  final String baseUrl =Constants.baseUrl;
   @override
   void initState() {
     super.initState();
@@ -45,7 +52,6 @@ class _SignupFormState extends State<SignupForm> {
     // Dispose all controllers
     _nameController.dispose();
     _regNoController.dispose();
-    _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -87,14 +93,14 @@ class _SignupFormState extends State<SignupForm> {
     });
   }
 
-  bool _validateEmail() {
-    if (_emailController.text.trim().isEmpty) {
+  bool _validateEmail(String email) {
+    if (email.trim().isEmpty) {
       _showSnackBar('Please enter an email', isError: true);
       return false;
     }
     
     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(_emailController.text.trim())) {
+    if (!emailRegex.hasMatch(email.trim())) {
       _showSnackBar('Please enter a valid email', isError: true);
       return false;
     }
@@ -103,38 +109,38 @@ class _SignupFormState extends State<SignupForm> {
   }
 
   Future<void> _sendOTP() async {
-  final email = _emailController.text.trim().toLowerCase();
+    final email = widget.email.trim().toLowerCase();
 
-  if (!_validateEmail()) return;
+    if (!_validateEmail(email)) return;
 
-  setState(() {
-    _isLoading = true;
-  });
+    setState(() {
+      _isLoading = true;
+    });
 
-  try {
-    final response = await http.get(
-      Uri.parse('$baseUrl?action=sendOTP&email=$email'),
-    );
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl?action=sendOTP&email=$email'),
+      );
 
-    final result = json.decode(response.body);
-    
-    if (result['success']) {
+      final result = json.decode(response.body);
+      
+      if (result['success']) {
+        setState(() {
+          _isOTPSent = true;
+          _isLoading = false;
+        });
+        _showSnackBar('OTP sent successfully', isError: false);
+      } else {
+        _showSnackBar(result['error'] ?? 'Failed to send OTP', isError: true);
+      }
+    } catch (e) {
+      _showSnackBar('Error sending OTP: $e', isError: true);
+    } finally {
       setState(() {
-        _isOTPSent = true;
         _isLoading = false;
       });
-      _showSnackBar('OTP sent successfully', isError: false);
-    } else {
-      _showSnackBar(result['error'] ?? 'Failed to send OTP', isError: true);
     }
-  } catch (e) {
-    _showSnackBar('Error sending OTP: $e', isError: true);
-  } finally {
-    setState(() {
-      _isLoading = false;
-    });
   }
-}
 
   Future<void> _verifyOTP() async {
     if (_otpController.text.isEmpty) {
@@ -148,7 +154,7 @@ class _SignupFormState extends State<SignupForm> {
 
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl?action=verifyOTP&email=${_emailController.text.trim()}&otp=${_otpController.text}'),
+        Uri.parse('$baseUrl?action=verifyOTP&email=${widget.email.trim()}&otp=${_otpController.text}'),
       );
 
       final result = json.decode(response.body);
@@ -172,63 +178,81 @@ class _SignupFormState extends State<SignupForm> {
   }
 
   Future<void> _signup() async {
-  if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return;
 
-  // Validate password match
-  if (_passwordController.text != _confirmPasswordController.text) {
-    _showSnackBar('Passwords do not match', isError: true);
-    return;
-  }
+    // Validate password match
+    if (_passwordController.text != _confirmPasswordController.text) {
+      _showSnackBar('Passwords do not match', isError: true);
+      return;
+    }
 
-  // Collect skills and education
-  final skills = _skillControllers
-      .map((controller) => controller.text.trim())
-      .where((skill) => skill.isNotEmpty)
-      .toList();
+    // Collect skills and education
+    final skills = _skillControllers
+        .map((controller) => controller.text.trim())
+        .where((skill) => skill.isNotEmpty)
+        .toList();
 
-  final education = _educationControllers
-      .map((controller) => controller.text.trim())
-      .where((edu) => edu.isNotEmpty)
-      .toList();
+    final education = _educationControllers
+        .map((controller) => controller.text.trim())
+        .where((edu) => edu.isNotEmpty)
+        .toList();
 
-  setState(() {
-    _isLoading = true;
-  });
+    setState(() {
+      _isLoading = true;
+    });
 
-  final client = http.Client();
+    final client = http.Client();
 
-  try {
-    // Initial signup request
-    final initialResponse = await client.post(
-      Uri.parse(baseUrl),
-      body: json.encode({
-        'action': 'signUp',
-        'signupData': {
-          'name': _nameController.text.trim(),
-          'regNo': _regNoController.text.trim(),
-          'email': _emailController.text.trim(),
-          'phone': _phoneController.text.trim(),
-          'password': _passwordController.text,
-          'skills': skills.join(', '),
-          'education': education.join('; '),
+    try {
+      // Initial signup request
+      final initialResponse = await client.post(
+        Uri.parse(baseUrl),
+        body: json.encode({
+          'action': 'signUp',
+          'signupData': {
+            'name': _nameController.text.trim(),
+            'regNo': _regNoController.text.trim(),
+            'email': widget.email.trim(),
+            'phone': _phoneController.text.trim(),
+            'password': _passwordController.text,
+            'skills': skills.join(', '),
+            'education': education.join('; '),
+            'accountType': _accountType, // Include account type in the request
+          }
+        }),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      // Check if it's a redirect
+      if (initialResponse.statusCode == 302) {
+        // Get the redirect URL from the 'location' header
+        final redirectUrl = initialResponse.headers['location'];
+        
+        if (redirectUrl != null) {
+          // Follow the redirect
+          final redirectResponse = await client.get(
+            Uri.parse(redirectUrl)
+          );
+
+          // Process the redirected response
+          final result = json.decode(redirectResponse.body);
+          
+          if (result['success']) {
+            _showSnackBar('Signup successful', isError: false);
+            
+            // Navigate to login screen
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            );
+          } else {
+            _showSnackBar(result['error'] ?? 'Signup failed', isError: true);
+          }
+        } else {
+          _showSnackBar('Redirect URL not found', isError: true);
         }
-      }),
-      headers: {'Content-Type': 'application/json'},
-    );
-
-    // Check if it's a redirect
-    if (initialResponse.statusCode == 302) {
-      // Get the redirect URL from the 'location' header
-      final redirectUrl = initialResponse.headers['location'];
-      
-      if (redirectUrl != null) {
-        // Follow the redirect
-        final redirectResponse = await client.get(
-          Uri.parse(redirectUrl)
-        );
-
-        // Process the redirected response
-        final result = json.decode(redirectResponse.body);
+      } else if (initialResponse.statusCode == 200) {
+        // If not a redirect, process the response normally
+        final result = json.decode(initialResponse.body);
         
         if (result['success']) {
           _showSnackBar('Signup successful', isError: false);
@@ -241,33 +265,17 @@ class _SignupFormState extends State<SignupForm> {
           _showSnackBar(result['error'] ?? 'Signup failed', isError: true);
         }
       } else {
-        _showSnackBar('Redirect URL not found', isError: true);
+        _showSnackBar('Signup failed: ${initialResponse.statusCode}', isError: true);
       }
-    } else if (initialResponse.statusCode == 200) {
-      // If not a redirect, process the response normally
-      final result = json.decode(initialResponse.body);
-      
-      if (result['success']) {
-        _showSnackBar('Signup successful', isError: false);
-        
-        // Navigate to login screen
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-      } else {
-        _showSnackBar(result['error'] ?? 'Signup failed', isError: true);
-      }
-    } else {
-      _showSnackBar('Signup failed: ${initialResponse.statusCode}', isError: true);
+    } catch (e) {
+      _showSnackBar('Error during signup: $e', isError: true);
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
-  } catch (e) {
-    _showSnackBar('Error during signup: $e', isError: true);
-  } finally {
-    setState(() {
-      _isLoading = false;
-    });
   }
-}
+
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -286,78 +294,101 @@ class _SignupFormState extends State<SignupForm> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
-          child: 
-           Form(
-      key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Personal Information
-          TextFormField(
-            controller: _nameController,
-            decoration: InputDecoration(
-              labelText: 'Full Name',
-              prefixIcon: const Icon(Icons.person),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your full name';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-          
-          TextFormField(
-            controller: _regNoController,
-            decoration: InputDecoration(
-              labelText: 'Registration Number',
-              prefixIcon: const Icon(Icons.numbers),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your registration number';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Account Type Dropdown
+                DropdownButtonFormField<String>(
+                  value: _accountType,
+                  decoration: InputDecoration(
+                    labelText: 'Account Type',
+                    prefixIcon: const Icon(Icons.account_circle),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  items: _accountTypes.map((String type) {
+                    return DropdownMenuItem<String>(
+                      value: type,
+                      child: Text(type),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      setState(() {
+                        _accountType = newValue;
+                      });
+                    }
+                  },
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please select an account type';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
 
-          // Email and Phone
-          TextFormField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            decoration: InputDecoration(
-              labelText: 'Email',
-              prefixIcon: const Icon(Icons.email),
-              // suffixIcon: _isOTPSent && !_isOTPVerified
-              //     ? null
-              //     : IconButton(
-              //         icon: const Icon(Icons.send),
-              //         onPressed: _sendOTP,
-              //       ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your email';
-              }
-              final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-              if (!emailRegex.hasMatch(value)) {
-                return 'Please enter a valid email';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
+                // Personal Information
+                TextFormField(
+                  controller: _nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Full Name',
+                    prefixIcon: const Icon(Icons.person),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter your full name';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                TextFormField(
+                  controller: _regNoController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Registration Number',
+                    prefixIcon: const Icon(Icons.numbers),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter your registration number';
+                    }
+                    if (value.trim().length < 6) {
+                      return 'Registration number must be at least 6 digits';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Email Field (Non-editable)
+                TextFormField(
+                  initialValue: widget.email,
+                  readOnly: true, // Make it non-editable
+                  enabled: false, // Visually shows that it's disabled
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: const Icon(Icons.email),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[200],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
 
           // OTP Verification
           if (_isOTPSent && !_isOTPVerified)

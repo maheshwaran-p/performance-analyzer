@@ -112,7 +112,7 @@ final prefs = await SharedPreferences.getInstance();
   }
 
   // Save only valid certificates
-  Future<bool> saveValidCertificates(String email) async {
+  Future<bool> saveValidCertificates(String email,int averageScore) async {
     try {
       _isLoading = true;
       notifyListeners();
@@ -128,7 +128,7 @@ final prefs = await SharedPreferences.getInstance();
       
       print('saving cert');
       // Save certificates to the server
-      final success = await _apiService.saveCertificates(email, validCertificates);
+      final success = await _apiService.saveCertificates(email, validCertificates,averageScore);
       
       if (success) {
         // Reload server certificates to update the list

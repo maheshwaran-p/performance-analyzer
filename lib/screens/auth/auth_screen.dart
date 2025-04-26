@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:performance_analzer2/screens/auth/sign_up.dart';
+import 'package:performance_analzer2/screens/auth/verify_email.dart';
 import 'login.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -58,7 +59,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 // Conditional Rendering of Login or Signup
                 _isLoginMode 
                   ? LoginScreen() 
-                  : SignupForm(),
+                  : EmailVerificationScreen(),
 
                 const SizedBox(height: 20),
 

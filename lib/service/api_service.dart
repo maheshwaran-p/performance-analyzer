@@ -134,7 +134,7 @@ class ApiService {
       return {'success': false, 'error': e.toString()};
     }
   }
-  Future<bool> saveCertificates(String email, List<Certificate> certificates) async {
+  Future<bool> saveCertificates(String email, List<Certificate> certificates,int averageScore) async {
   try {
     print('saving cert');
     // First upload files to get URLs
@@ -148,7 +148,7 @@ class ApiService {
         'filename': cert.filename,
         'fileType': cert.fileType,
         'fileURL': await _uploadFile(cert.file, cert.filename),
-        'score': cert.isOriginal == true ? 85 : 0,
+        'score': averageScore>0 ? averageScore/2 : 0,
         'isOriginal': cert.isOriginal ?? false,
         'certificateType': certificateType ?? 'Achievements',
       });
@@ -238,6 +238,8 @@ int min(int a, int b) {
     // In a real app, you would upload to Google Drive or other storage
     return 'https://storage.example.com/certificates/$filename';
   }
+
+
   Future<bool> saveResearch(String email, Map<String, dynamic> research) async {
   try {
     final client = http.Client();

@@ -91,7 +91,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => SignupForm(
-                // email: widget.email,
+                email: widget.email,
               ),
             ),
           );

@@ -75,7 +75,7 @@ class ResultsScreen extends StatelessWidget {
               
               // Submit button only if there are valid certificates
               if (hasValidCertificates)
-                _buildSubmitButton(context, provider),
+                _buildSubmitButton(context, provider,averageScore),
               
               if (!hasValidCertificates)
                 _buildNoValidCertificatesMessage(context),
@@ -214,7 +214,7 @@ class ResultsScreen extends StatelessWidget {
     );
   }
   
-  Widget _buildSubmitButton(BuildContext context, CertificateProvider provider) {
+  Widget _buildSubmitButton(BuildContext context, CertificateProvider provider,int averageScore) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -262,7 +262,7 @@ class ResultsScreen extends StatelessWidget {
                     
                     if (userEmail != null) {
                       // Save the valid certificates
-                      final success = await provider.saveValidCertificates(userEmail);
+                      final success = await provider.saveValidCertificates(userEmail,averageScore);
                       
                       // Dismiss loading indicator
                       if (context.mounted) Navigator.pop(context);

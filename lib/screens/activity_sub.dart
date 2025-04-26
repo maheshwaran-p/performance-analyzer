@@ -210,7 +210,7 @@ class _PublicationsTabState extends ActivityTabState<PublicationsTab> {
         'Journal': _journalController.text.trim(),
         'Year': int.parse(_yearController.text.trim()),
         'Citation': int.parse(_citationController.text.trim()),
-        'Score': 85, // Default score for valid publication
+        'Score': 45, // Default score for valid publication
       };
       
       // Save the publication to the server
